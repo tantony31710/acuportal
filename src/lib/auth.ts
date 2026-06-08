@@ -9,7 +9,7 @@ export function useIsTeacher(): boolean | null {
       try {
         const { data: u } = await supabase.auth.getUser()
         if (!u.user) { if (!cancelled) setState(false); return }
-        const { data } = await supabase.from('user_roles').select('role').eq('user_id', u.user.id).single()
+        const { data } = await supabase.from('user_roles').select('role').eq('user_id', u.user.id).maybeSingle()
         if (!cancelled) setState(data?.role === 'teacher')
       } catch { if (!cancelled) setState(false) }
     }
