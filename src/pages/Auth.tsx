@@ -12,10 +12,20 @@ export function Auth() {
   const [msg, setMsg] = useState<{type:'success'|'error';text:string}|null>(null)
 
   useEffect(() => {
-    supabase.auth.getUser().then(r => { if (r.data.user) navigate('/check-in') })
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => { if (s?.user) navigate('/check-in') })
-    return () => sub.subscription.unsubscribe()
-  }, [navigate])
+  let cancelled = false
+  async function check() {
+    const { data: u } = await supabase.auth.getUser()
+    if (!u.user) return
+    const { data } = await supabase.from('user_roles').select('role').eq('user_id', u.user.id).maybeSingle()
+    if (!cancelled) {
+      if (data?.role === 'teacher') navigate('/teacher')
+      else navigate('/check-in')
+    }
+  }
+  check()
+  const { data: sub } = supabase.auth.onAuthStateChange(() => check())
+  return () => { cancelled = true; sub.subscription.unsubscribe() }
+}, [navigate])
 
   const signIn = async () => {
     setLoading(true); setMsg(null)
