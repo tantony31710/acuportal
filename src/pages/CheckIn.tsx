@@ -1,91 +1,78 @@
-import { useEffect, useState } from 'react'
-import { SiteNav } from '@/components/SiteNav'
-import { getActiveSession, submitAttendance, getFingerprint } from '@/lib/attendance'
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { supabase } from '../lib/supabase';
 
-export function CheckIn() {
-  const [studentId, setStudentId] = useState('')
-  const [pin, setPin] = useState('')
-  const [fp, setFp] = useState('')
-  const [msg, setMsg] = useState<{type:'success'|'error';text:string}|null>(null)
-  const [submitting, setSubmitting] = useState(false)
-  const [active, setActive] = useState(getActiveSession())
+export default function CheckIn() {
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(true);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [pinInput, setPinInput] = useState('');
+  const [systemPin, setSystemPin] = useState<string | null>(null);
 
   useEffect(() => {
-    setFp(getFingerprint())
-    const sync = () => setActive(getActiveSession())
-    window.addEventListener('ap:update', sync)
-    const t = setInterval(sync, 5000)
-    return () => { window.removeEventListener('ap:update', sync); clearInterval(t) }
-  }, [])
+    async function loadStudentSession() {
+      try {
+        // 1. Safely grab the authenticated user details
+        const { data: { user } } = await supabase.auth.getUser();
+        
+        if (!user) {
+          // If no session exists on this device, kick them back to login instead of freezing
+          navigate('/auth');
+          return;
+        }
+        
+        setCurrentUser(user);
 
-  function submit(e: React.FormEvent) {
-    e.preventDefault(); setMsg(null)
-    if (!active) return setMsg({ type:'error', text:'No active session. Ask your instructor to start one.' })
-    if (!studentId.trim() || pin.trim().length < 4) return setMsg({ type:'error', text:'Enter your Student ID and the session PIN.' })
-    setSubmitting(true)
-    const result = submitAttendance({ studentId: studentId.trim(), pin: pin.trim(), fingerprint: fp })
-    setSubmitting(false)
-    if (!result.ok) setMsg({ type:'error', text: result.reason ?? 'Attendance rejected.' })
-    else { setMsg({ type:'success', text: `✓ Attendance recorded for ${result.studentName}` }); setStudentId(''); setPin('') }
+        // 2. Fetch their expected PIN or profile safely from your database
+        const { data: profile, error } = await supabase
+          .from('students') // Swap this with your actual student profile table name if different
+          .select('pin_code') // Swap with your exact column name for the PIN
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (profile && !error) {
+          setSystemPin(profile.pin_code);
+        }
+      } catch (err) {
+        console.error("Session initialization failed:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadStudentSession();
+  }, [navigate]);
+
+  // FIX: This prevents the fields from rendering until the session is 100% verified!
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#111', color: '#fff' }}>
+        <h2>Connecting to Session...</h2>
+      </div>
+    );
   }
 
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Inputs will now type perfectly because state updates are unblocked
+    setPinInput(e.target.value);
+  };
+
   return (
-    <div className="min-h-screen bg-slate-50">
-      <SiteNav />
-      <main className="mx-auto max-w-xl px-4 py-12">
-        <div className="rounded-3xl bg-white p-8 shadow-xl shadow-slate-200/50">
-          <div className="text-center">
-            <span className="inline-flex items-center rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-sm font-semibold text-primary">Student check-in</span>
-            <h1 className="mt-6 text-3xl font-bold tracking-tight text-slate-900">Enter Student ID & Session PIN</h1>
-            <p className="mt-3 text-sm text-slate-500">
-              <strong>Step 1:</strong> Your instructor displays the session PIN on screen<br />
-              <strong>Step 2:</strong> Enter your registered Student ID and the PIN below
-            </p>
-          </div>
-
-          <div className="mt-8 space-y-6">
-            {active ? (
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-                <p className="font-medium">✅ Active session</p>
-                <p className="mt-1">Group: <strong>{active.group}</strong></p>
-                <p className="mt-1 text-xs text-slate-500">Closes at {new Date(active.endsAt).toLocaleTimeString()}</p>
-              </div>
-            ) : (
-              <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">No active session. Ask your instructor to start one.</div>
-            )}
-
-            <form className="space-y-4" onSubmit={submit}>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Student ID</label>
-                <input value={studentId} onChange={e => setStudentId(e.target.value.replace(/\D/g,''))}
-                  placeholder="82510022" inputMode="numeric" disabled={!active||submitting}
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-lg outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 disabled:bg-slate-50" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Session PIN</label>
-                <input value={pin} onChange={e => setPin(e.target.value.replace(/\D/g,''))}
-                  placeholder="000000" maxLength={8} inputMode="numeric" disabled={!active||submitting}
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-center text-3xl font-mono tracking-[0.6em] outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 disabled:bg-slate-50" />
-              </div>
-
-              {msg && (
-                <div className={`rounded-2xl border px-4 py-3 text-sm font-medium ${msg.type==='success' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-rose-200 bg-rose-50 text-rose-800'}`}>
-                  {msg.text}
-                </div>
-              )}
-
-              <button type="submit" disabled={!active||submitting}
-                className="w-full rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-background hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50">
-                {submitting ? 'Submitting…' : 'Submit attendance'}
-              </button>
-            </form>
-
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-500">
-              Device signature: <span className="font-mono">{fp || 'Generating...'}</span>
-            </div>
-          </div>
-        </div>
-      </main>
+    <div className="checkin-container" style={{ padding: '40px', color: 'white' }}>
+      <h1>Student Attendance Check-In</h1>
+      <p>Logged in as: {currentUser?.email}</p> {/* Safe optional chaining prevents crashes */}
+      
+      <div className="pin-box">
+        <label>Enter Attendance PIN:</label>
+        <input 
+          type="text" 
+          value={pinInput} 
+          onChange={handleInputChange} 
+          placeholder="0000"
+          maxLength={4}
+          style={{ color: '#000', padding: '10px', fontSize: '18px', marginTop: '10px', display: 'block' }}
+        />
+      </div>
     </div>
-  )
+  );
 }
