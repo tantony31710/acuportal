@@ -1,14 +1,12 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { SiteNav } from '@/components/SiteNav'
+import { SiteNav } from '../components/SiteNav' // Verified local relative module folder reference
 import { supabase } from '../lib/supabase'
 
 export default function CheckIn() {
   const navigate = useNavigate()
   const [loading, setLoading] = useState<boolean>(true)
   const [userEmail, setUserEmail] = useState<string>('')
-  
-  // Debug tracking state placed correctly inside the component
   const [debugError, setDebugError] = useState<string | null>(null)
   
   // UI Inputs matching your phone screen
@@ -131,6 +129,11 @@ export default function CheckIn() {
           <h1 className="text-2xl font-bold mt-2">Enter Student ID & Session PIN</h1>
           <p className="text-xs text-slate-400 mt-1 mb-6">Signed in as: {userEmail}</p>
 
+          <div className="text-left text-xs bg-slate-950 p-4 rounded-lg border border-slate-800 mb-6 space-y-2 text-slate-400">
+            <p><strong>Step 1:</strong> Your instructor displays the session PIN on screen.</p>
+            <p><strong>Step 2:</strong> Enter your registered Student ID and the PIN below.</p>
+          </div>
+
           {/* Warning Banner Display */}
           <div className={`p-3 rounded-lg mb-6 text-xs font-medium border ${
             isSessionActive 
@@ -155,7 +158,7 @@ export default function CheckIn() {
                 type="text" 
                 value={studentIdInput}
                 onChange={(e) => setStudentIdInput(e.target.value)}
-                placeholder="e.g. 82510022" 
+                placeholder="82510022" 
                 disabled={submitting}
                 className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-2.5 text-white placeholder-slate-600 outline-none focus:border-blue-500"
               />
@@ -181,7 +184,7 @@ export default function CheckIn() {
               disabled={submitting || !isSessionActive || !pinInput}
               className="w-full mt-2 rounded-lg bg-emerald-600 py-3 font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              {submitting ? "Verifying Context..." : "Submit attendance"}
+              {submitting ? "Verifying..." : "Submit attendance"}
             </button>
           </form>
 
