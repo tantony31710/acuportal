@@ -2,7 +2,7 @@ const [debugError, setDebugError] = useState<string | null>(null);
 import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { SiteNav } from '@/components/SiteNav'
-import { supabase } from '@/lib/supabase'
+import { supabase } from '../lib/supabase';
 
 export default function CheckIn() {
   const navigate = useNavigate()
