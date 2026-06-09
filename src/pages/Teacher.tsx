@@ -4,7 +4,7 @@ import { SiteNav } from '@/components/SiteNav'
 import { useIsTeacher } from '@/lib/auth'
 import { useAttendanceTick } from '@/lib/hooks'
 import { GROUPS, type Group } from '@/lib/roster'
-import { supabase } from '@/lib/supabase'
+import { supabase } from '../lib/supabase';
 
 // Helper function to trigger browser CSV file generation
 function dl(csv: string, name: string) {
