@@ -4,29 +4,198 @@ import { SiteNav } from '@/components/SiteNav'
 import { useIsTeacher } from '@/lib/auth'
 import { useAttendanceTick } from '@/lib/hooks'
 import { GROUPS, type Group } from '@/lib/roster'
-import { getActiveSession, getSessions, startSession, closeSession, summarizeSession, exportSessionCsv } from '@/lib/attendance'
+import { supabase } from '@/lib/supabase'
 
+// Helper function to trigger browser CSV file generation
 function dl(csv: string, name: string) {
-  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'})); a.download = name; a.click()
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }))
+  a.download = name
+  a.click()
+}
+
+// Helper to compile submissions arrays into clean CSV formats
+function generateCsvFromSubmissions(session: any, submissions: any[]): string {
+  let csv = 'Student ID,Email,Timestamp,Status,IP Address,User Agent\n'
+  submissions.forEach(sub => {
+    csv += `"${sub.student_id}","${sub.email}","${new Date(sub.created_at).toISOString()}","${sub.status}","${sub.ip_address || ''}","${sub.user_agent || ''}"\n`
+  })
+  return csv
 }
 
 export function Teacher() {
   const teacher = useIsTeacher()
   const navigate = useNavigate()
   useAttendanceTick()
+
   const [group, setGroup] = useState<Group>('G1')
   const [windowMin, setWindowMin] = useState(15)
   const [mounted, setMounted] = useState(false)
-  useEffect(() => setMounted(true), [])
-  useEffect(() => { if (teacher === false) navigate('/auth') }, [teacher])
+
+  // Real-time Supabase states
+  const [active, setActive] = useState<any>(null)
+  const [sessionsHistory, setSessionsHistory] = useState<any[]>([])
+  const [submissions, setSubmissions] = useState<any[]>([])
+  const [actionLoading, setActionLoading] = useState(false)
+
+  // Timer countdown trackers
+  const [timeRemaining, setTimeRemaining] = useState({ min: 0, sec: 0 })
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  useEffect(() => {
+    if (teacher === false) navigate('/auth')
+  }, [teacher, navigate])
+
+  // Fetch all active sessions and past histories directly from the database
+  const fetchDashboardData = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      // 1. Fetch current active session running on the platform
+      const { data: activeData } = await supabase
+        .from('attendance_sessions')
+        .select('*')
+        .eq('is_active', true)
+        .maybeSingle()
+
+      setActive(activeData)
+
+      // 2. Fetch submissions for the active session if one exists
+      if (activeData) {
+        const { data: subData } = await supabase
+          .from('attendance_submissions')
+          .select('*')
+          .eq('session_id', activeData.id)
+        setSubmissions(subData || [])
+      } else {
+        setSubmissions([])
+      }
+
+      // 3. Fetch full historical record logs
+      const { data: historyData } = await supabase
+        .from('attendance_sessions')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      setSessionsHistory(historyData || [])
+    } catch (err) {
+      console.error('Failed to sync dashboard streams:', err)
+    }
+  }
+
+  useEffect(() => {
+    if (mounted && teacher) {
+      fetchDashboardData()
+      // Optional polling backup to keep metric cards fresh every 5 seconds
+      const poll = setInterval(fetchDashboardData, 5000)
+      return () => clearInterval(poll)
+    }
+  }, [mounted, teacher])
+
+  // Live timer tick controller
+  useEffect(() => {
+    if (!active || !active.ends_at) return
+
+    const updateCountdown = () => {
+      const msLeft = new Date(active.ends_at).getTime() - Date.now()
+      if (msLeft <= 0) {
+        setTimeRemaining({ min: 0, sec: 0 })
+        // Auto mark expired on UI thread
+        fetchDashboardData()
+      } else {
+        setTimeRemaining({
+          min: Math.floor(msLeft / 60000),
+          sec: Math.floor((msLeft % 60000) / 1000)
+        })
+      }
+    }
+
+    updateCountdown()
+    const timer = setInterval(updateCountdown, 1000)
+    return () => clearInterval(timer)
+  }, [active])
 
   if (!mounted || teacher === null) return null
 
-  const active = getActiveSession()
-  const sessions = getSessions()
-  const summary = active ? summarizeSession(active) : null
-  const remaining = active ? Math.max(0, Math.floor((active.endsAt - Date.now()) / 60000)) : 0
-  const remainingSec = active ? Math.max(0, Math.floor(((active.endsAt - Date.now()) % 60000) / 1000)) : 0
+  // Calculate dynamic dashboard summary metrics locally from db submission states
+  const summary = {
+    present: submissions.filter(s => s.status === 'present').length,
+    flagged: submissions.filter(s => s.status === 'flagged').length
+  }
+
+  // Action: Launch a brand-new cloud tracked PIN session
+  const handleStartSession = async () => {
+    try {
+      setActionLoading(true)
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      // Auto-expire any orphan historical active items first
+      await supabase
+        .from('attendance_sessions')
+        .update({ is_active: false })
+        .eq('instructor_id', user.id)
+
+      const generatedPin = Math.floor(1000 + Math.random() * 9000).toString()
+      const endsAtTime = new Date(Date.now() + windowMin * 60000).toISOString()
+
+      const { error } = await supabase
+        .from('attendance_sessions')
+        .insert([
+          {
+            instructor_id: user.id,
+            pin_code: generatedPin,
+            group_name: group,
+            is_active: true,
+            ends_at: endsAtTime
+          }
+        ])
+
+      if (error) throw error
+      await fetchDashboardData()
+    } catch (err: any) {
+      alert('Error launching session: ' + err.message)
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  // Action: Explicitly terminate access parameters early
+  const handleCloseSession = async (id: string) => {
+    try {
+      setActionLoading(true)
+      const { error } = await supabase
+        .from('attendance_sessions')
+        .update({ is_active: false })
+        .eq('id', id)
+
+      if (error) throw error
+      await fetchDashboardData()
+    } catch (err: any) {
+      alert('Error closing session: ' + err.message)
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  // Action: Compile historical records for export operations
+  const handleExportCsv = async (session: any) => {
+    try {
+      const { data: subs } = await supabase
+        .from('attendance_submissions')
+        .select('*')
+        .eq('session_id', session.id)
+
+      const csvContent = generateCsvFromSubmissions(session, subs || [])
+      dl(csvContent, `session_${session.id}.csv`)
+    } catch (err: any) {
+      alert('Export pipeline failed: ' + err.message)
+    }
+  }
 
   return (
     <div className="min-h-screen">
@@ -43,28 +212,39 @@ export function Teacher() {
         <div className="grid gap-6 lg:grid-cols-3">
           <section className="lg:col-span-2 rounded-xl border border-blue-500/30 bg-gradient-to-br from-blue-950 to-blue-900 p-6">
             <h2 className="mb-4 text-lg font-semibold text-white">Active Session</h2>
-            {active && summary ? (
+            {active ? (
               <div className="space-y-4">
                 <div className="rounded-lg bg-slate-900/50 p-4">
                   <div className="grid gap-6 sm:grid-cols-2">
                     <div>
                       <div className="mb-2 text-xs text-slate-400">Session PIN (announce aloud)</div>
-                      <div className="pin-digit mb-1 text-4xl text-blue-300">{active.pin}</div>
-                      <div className="text-xs text-slate-400">Time left: {remaining}:{String(remainingSec).padStart(2,'0')}</div>
+                      <div className="pin-digit mb-1 text-4xl font-mono text-blue-300 font-bold">{active.pin_code}</div>
+                      <div className="text-xs text-slate-400">
+                        Time left: {timeRemaining.min}:{String(timeRemaining.sec).padStart(2, '0')}
+                      </div>
                     </div>
                     <div className="space-y-3 text-white">
-                      <div><div className="text-xs text-slate-400">Group</div><div className="text-lg font-semibold">{active.group}</div></div>
+                      <div><div className="text-xs text-slate-400">Group</div><div className="text-lg font-semibold">{active.group_name}</div></div>
                       <div><div className="text-xs text-slate-400">Present</div><div className="text-2xl font-bold text-emerald-400">{summary.present}</div></div>
                       <div><div className="text-xs text-slate-400">Flagged</div><div className="text-2xl font-bold text-amber-400">{summary.flagged}</div></div>
-                      <div><div className="text-xs text-slate-400">Closes at</div><div className="text-sm">{new Date(active.endsAt).toLocaleTimeString()}</div></div>
+                      <div><div className="text-xs text-slate-400">Closes at</div><div className="text-sm">{new Date(active.ends_at).toLocaleTimeString()}</div></div>
                     </div>
                   </div>
                 </div>
                 <div className="flex gap-3">
-                  <button onClick={() => { closeSession(active.id); window.dispatchEvent(new Event('ap:update')) }}
-                    className="flex-1 rounded-lg bg-red-600 px-4 py-2 font-semibold text-white hover:bg-red-500">Close session</button>
-                  <button onClick={() => dl(exportSessionCsv(active), `session_${active.id}.csv`)}
-                    className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800">Export CSV</button>
+                  <button 
+                    disabled={actionLoading}
+                    onClick={() => handleCloseSession(active.id)}
+                    className="flex-1 rounded-lg bg-red-600 px-4 py-2 font-semibold text-white hover:bg-red-500 disabled:opacity-50"
+                  >
+                    Close session
+                  </button>
+                  <button 
+                    onClick={() => handleExportCsv(active)}
+                    className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800"
+                  >
+                    Export CSV
+                  </button>
                 </div>
               </div>
             ) : (
@@ -75,7 +255,7 @@ export function Teacher() {
                     <div className="flex flex-wrap gap-2">
                       {(['ALL', ...GROUPS] as Group[]).map(g => (
                         <button key={g} onClick={() => setGroup(g)}
-                          className={`rounded-md border px-3 py-1.5 text-sm transition ${group===g ? 'border-blue-400 bg-blue-600 text-white' : 'border-slate-600 bg-slate-800 text-slate-300 hover:border-blue-400/50'}`}>
+                          className={`rounded-md border px-3 py-1.5 text-sm transition ${group === g ? 'border-blue-400 bg-blue-600 text-white' : 'border-slate-600 bg-slate-800 text-slate-300 hover:border-blue-400/50'}`}>
                           {g === 'ALL' ? 'All' : g}
                         </button>
                       ))}
@@ -83,12 +263,17 @@ export function Teacher() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-300 mb-2">Window (minutes)</label>
-                    <input type="number" min={1} max={180} value={windowMin} onChange={e => setWindowMin(Number(e.target.value)||15)}
+                    <input type="number" min={1} max={180} value={windowMin} onChange={e => setWindowMin(Number(e.target.value) || 15)}
                       className="w-full rounded-md border border-slate-600 bg-slate-900 px-3 py-2 font-mono text-white outline-none focus:border-blue-400" />
                   </div>
                 </div>
-                <button onClick={() => { startSession({ group, windowMinutes: windowMin }); window.dispatchEvent(new Event('ap:update')) }}
-                  className="w-full rounded-lg bg-blue-600 px-4 py-3 font-semibold text-white hover:bg-blue-500">▶ Start new session</button>
+                <button 
+                  disabled={actionLoading}
+                  onClick={handleStartSession}
+                  className="w-full rounded-lg bg-blue-600 px-4 py-3 font-semibold text-white hover:bg-blue-500 disabled:opacity-50"
+                >
+                  ▶ Start new session
+                </button>
               </div>
             )}
           </section>
@@ -99,43 +284,52 @@ export function Teacher() {
               <div className="mt-2 text-3xl font-bold text-emerald-300">275</div>
             </div>
             <div className="rounded-xl border border-slate-600 bg-slate-800/50 p-5">
-              <div className="text-xs text-slate-400">Sessions</div>
-              <div className="mt-2 text-3xl font-bold text-white">{sessions.length}</div>
-            </div>
-            <div className="rounded-xl border border-amber-500/30 bg-amber-950/50 p-5">
-              <div className="text-xs text-amber-300">Flagged events</div>
-              <div className="mt-2 text-3xl font-bold text-amber-300">{sessions.reduce((n,s)=>n+s.submissions.filter(r=>r.status==='flagged').length,0)}</div>
+              <div className="text-xs text-slate-400">Total System Sessions</div>
+              <div className="mt-2 text-3xl font-bold text-white">{sessionsHistory.length}</div>
             </div>
           </aside>
         </div>
 
         <section className="mt-10">
           <h2 className="mb-4 text-lg font-semibold text-foreground">Session history</h2>
-          {sessions.length === 0
-            ? <div className="rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">No sessions yet. Start one above.</div>
-            : <div className="overflow-hidden rounded-xl border border-border">
-                <table className="w-full text-sm">
-                  <thead className="bg-secondary/60 text-left text-xs uppercase tracking-wider text-muted-foreground">
-                    <tr>{['Started','Group','Present','Flagged','Status','Export'].map(h=><th key={h} className="px-4 py-2">{h}</th>)}</tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {sessions.map(s => {
-                      const sm = summarizeSession(s)
-                      const status = s.closedAt ? 'closed' : Date.now() > s.endsAt ? 'expired' : 'active'
-                      return (
-                        <tr key={s.id} className="hover:bg-secondary/20">
-                          <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(s.startedAt).toLocaleString()}</td>
-                          <td className="px-4 py-3 text-foreground">{s.group}</td>
-                          <td className="px-4 py-3 font-semibold text-success">{sm.present}</td>
-                          <td className="px-4 py-3 font-semibold text-warning">{sm.flagged}</td>
-                          <td className="px-4 py-3 text-xs text-muted-foreground">{status}</td>
-                          <td className="px-4 py-3"><button onClick={() => dl(exportSessionCsv(s),`session_${s.id}.csv`)} className="text-xs text-primary hover:underline">CSV</button></td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>}
+          {sessionsHistory.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
+              No sessions yet. Start one above.
+            </div>
+          ) : (
+            <div className="overflow-hidden rounded-xl border border-border">
+              <table className="w-full text-sm">
+                <thead className="bg-secondary/60 text-left text-xs uppercase tracking-wider text-muted-foreground">
+                  <tr>
+                    {['Started', 'Group', 'Status', 'Export'].map(h => (
+                      <th key={h} className="px-4 py-2">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {sessionsHistory.map(s => {
+                    const status = !s.is_active ? 'Closed' : new Date(s.ends_at).getTime() < Date.now() ? 'Expired' : 'Active'
+                    return (
+                      <tr key={s.id} className="hover:bg-secondary/20">
+                        <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(s.created_at).toLocaleString()}</td>
+                        <td className="px-4 py-3 text-foreground">{s.group_name}</td>
+                        <td className="px-4 py-3 text-xs text-muted-foreground">
+                          <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold ${status === 'Active' ? 'bg-emerald-950 text-emerald-400 border border-emerald-500/30' : 'bg-zinc-900 text-zinc-400'}`}>
+                            {status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <button onClick={() => handleExportCsv(s)} className="text-xs text-blue-400 hover:underline">
+                            CSV
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </section>
       </main>
     </div>
