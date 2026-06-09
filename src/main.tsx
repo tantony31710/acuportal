@@ -4,7 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { supabase } from './lib/supabase';
 import Auth from './pages/Auth';
 import Teacher from './pages/Teacher';
-import CheckIn from './pages/CheckIn'; // Adjust this import name if your student page filename is different
+import CheckIn from './pages/CheckIn'; 
 import './index.css';
 
 // Security Guard Component to lock down the teacher layout
