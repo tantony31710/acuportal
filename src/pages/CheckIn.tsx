@@ -1,13 +1,15 @@
-const [debugError, setDebugError] = useState<string | null>(null);
 import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { SiteNav } from '@/components/SiteNav'
-import { supabase } from '../lib/supabase';
+import { supabase } from '../lib/supabase'
 
 export default function CheckIn() {
   const navigate = useNavigate()
   const [loading, setLoading] = useState<boolean>(true)
   const [userEmail, setUserEmail] = useState<string>('')
+  
+  // Debug tracking state placed correctly inside the component
+  const [debugError, setDebugError] = useState<string | null>(null)
   
   // UI Inputs matching your phone screen
   const [studentIdInput, setStudentIdInput] = useState<string>('')
@@ -52,6 +54,7 @@ export default function CheckIn() {
       }
     } catch (err: any) {
       console.error("Sync channel failed:", err.message)
+      setDebugError(err.message)
       setSessionMessage("Connection error: " + err.message)
     } finally {
       setLoading(false)
@@ -89,7 +92,7 @@ export default function CheckIn() {
         .insert([
           {
             session_id: activeSessionData.id,
-            student_id: studentIdInput, // Uses typed structural Student ID
+            student_id: studentIdInput, 
             email: user?.email || userEmail,
             status: 'present',
             created_at: new Date().toISOString()
@@ -136,6 +139,12 @@ export default function CheckIn() {
           }`}>
             {sessionMessage}
           </div>
+
+          {debugError && (
+            <div className="p-2 mb-4 text-left font-mono text-[10px] bg-red-950/60 text-red-400 rounded border border-red-900/40">
+              System Trace: {debugError}
+            </div>
+          )}
 
           <form onSubmit={handleAttendanceSubmit} className="space-y-5 text-left">
             <div>
