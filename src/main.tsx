@@ -5,7 +5,7 @@ import { supabase } from './lib/supabase';
 import Auth from './pages/Auth';
 import Teacher from './pages/Teacher';
 import CheckIn from './pages/CheckIn'; 
-import './index.css';
+import './styles.css';
 
 // Security Guard Component to lock down the teacher layout
 function TeacherRouteGuard({ children }: { children: React.ReactNode }) {
