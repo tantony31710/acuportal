@@ -23,7 +23,7 @@ function generateCsvFromSubmissions(session: any, submissions: any[]): string {
   return csv
 }
 
-export function Teacher() {
+export default function Teacher() {
   const teacher = useIsTeacher()
   const navigate = useNavigate()
   useAttendanceTick()
