@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase';
 
-export function Auth() {
+export default function Auth() {
   const navigate = useNavigate()
   const [tab, setTab] = useState<'signin'|'signup'>('signin')
   const [email, setEmail] = useState('')
