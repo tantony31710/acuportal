@@ -1,27 +1,25 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { SiteNav } from '../components/SiteNav' // Verified local relative module folder reference
+import { SiteNav } from '../components/SiteNav'
 import { supabase } from '../lib/supabase'
 
 export default function CheckIn() {
   const navigate = useNavigate()
   const [loading, setLoading] = useState<boolean>(true)
   const [userEmail, setUserEmail] = useState<string>('')
-  const [debugError, setDebugError] = useState<string | null>(null)
   
-  // UI Inputs matching your phone screen
+  // UI States
   const [studentIdInput, setStudentIdInput] = useState<string>('')
   const [pinInput, setPinInput] = useState<string>('')
-  
   const [expectedPin, setExpectedPin] = useState<string | null>(null)
-  const [sessionMessage, setSessionMessage] = useState<string>("Locating live lecture session...")
+  const [sessionMessage, setSessionMessage] = useState<string>("Waiting for cloud sync...")
   const [isSessionActive, setIsSessionActive] = useState<boolean>(false)
   const [activeSessionData, setActiveSessionData] = useState<any>(null)
   const [submitting, setSubmitting] = useState<boolean>(false)
 
-  const checkLiveSession = async () => {
+  // 1. Initial State Check
+  const checkInitialSession = async () => {
     try {
-      // 1. Verify localized mobile device authentication state
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
         navigate('/auth')
@@ -29,7 +27,6 @@ export default function CheckIn() {
       }
       setUserEmail(user.email || '')
 
-      // 2. Scan the database for the global active session
       const { data: activeSession, error } = await supabase
         .from('attendance_sessions')
         .select('*')
@@ -38,32 +35,59 @@ export default function CheckIn() {
 
       if (error) throw error
 
-      // 3. Verify session exists and is within valid time window
-      if (activeSession && new Date(activeSession.ends_at).getTime() > Date.now()) {
-        setIsSessionActive(true)
-        setExpectedPin(activeSession.pin_code)
-        setActiveSessionData(activeSession)
-        setSessionMessage(`Live session detected for Group ${activeSession.group_name}!`)
-      } else {
-        setIsSessionActive(false)
-        setExpectedPin(null)
-        setActiveSessionData(null)
-        setSessionMessage("No active session. Ask your instructor to start one.")
-      }
+      updateSessionUI(activeSession)
     } catch (err: any) {
-      console.error("Sync channel failed:", err.message)
-      setDebugError(err.message)
-      setSessionMessage("Connection error: " + err.message)
+      setSessionMessage("Cloud connection offline: " + err.message)
     } finally {
       setLoading(false)
     }
   }
 
+  // Helper to handle UI updates cleanly
+  const updateSessionUI = (session: any) => {
+    if (session && new Date(session.ends_at).getTime() > Date.now()) {
+      setIsSessionActive(true)
+      setExpectedPin(session.pin_code)
+      setActiveSessionData(session)
+      setSessionMessage(`Live session detected for Group ${session.group_name}!`)
+    } else {
+      setIsSessionActive(false)
+      setExpectedPin(null)
+      setActiveSessionData(null)
+      setSessionMessage("No active session. Ask your instructor to start one.")
+    }
+  }
+
+  // 2. Open Persistent Cloud WebSocket Connection
   useEffect(() => {
-    checkLiveSession()
-    // Poll for the active session every 5 seconds so it pops up automatically when started!
-    const interval = setInterval(checkLiveSession, 5000)
-    return () => clearInterval(interval)
+    checkInitialSession()
+
+    // Subscribe to database changes in realtime
+    const sessionChannel = supabase
+      .channel('live-attendance-channel')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'attendance_sessions' },
+        (payload) => {
+          console.log('Realtime update received from cloud:', payload)
+          // If a session was updated or inserted, re-evaluate it immediately
+          if (payload.new && (payload.new as any).is_active) {
+            updateSessionUI(payload.new)
+          } else {
+            // Session closed or turned off
+            setIsSessionActive(false)
+            setExpectedPin(null)
+            setActiveSessionData(null)
+            setSessionMessage("The attendance session has ended.")
+          }
+        }
+      )
+      .subscribe()
+
+    // Cleanup cloud channel on component unmount to prevent memory leaks
+    return () => {
+      supabase.removeChannel(sessionChannel)
+    }
   }, [navigate])
 
   const handleAttendanceSubmit = async (e: React.FormEvent) => {
@@ -84,7 +108,6 @@ export default function CheckIn() {
       setSubmitting(true)
       const { data: { user } } = await supabase.auth.getUser()
       
-      // Post record securely to cloud submissions bucket
       const { error } = await supabase
         .from('attendance_submissions')
         .insert([
@@ -111,7 +134,10 @@ export default function CheckIn() {
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-950 text-white font-sans">
-        <h3>Connecting to Live Campus Session...</h3>
+        <div className="text-center space-y-2">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
+          <h3>Connecting to Realtime Cloud...</h3>
+        </div>
       </div>
     )
   }
@@ -134,20 +160,13 @@ export default function CheckIn() {
             <p><strong>Step 2:</strong> Enter your registered Student ID and the PIN below.</p>
           </div>
 
-          {/* Warning Banner Display */}
-          <div className={`p-3 rounded-lg mb-6 text-xs font-medium border ${
+          <div className={`p-3 rounded-lg mb-6 text-xs font-medium border transition-colors duration-300 ${
             isSessionActive 
               ? 'bg-emerald-950/40 text-emerald-400 border-emerald-500/20' 
               : 'bg-rose-950/40 text-rose-400 border-rose-500/20'
           }`}>
             {sessionMessage}
           </div>
-
-          {debugError && (
-            <div className="p-2 mb-4 text-left font-mono text-[10px] bg-red-950/60 text-red-400 rounded border border-red-900/40">
-              System Trace: {debugError}
-            </div>
-          )}
 
           <form onSubmit={handleAttendanceSubmit} className="space-y-5 text-left">
             <div>
@@ -160,7 +179,7 @@ export default function CheckIn() {
                 onChange={(e) => setStudentIdInput(e.target.value)}
                 placeholder="82510022" 
                 disabled={submitting}
-                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-2.5 text-white placeholder-slate-600 outline-none focus:border-blue-500"
+                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-2.5 text-white outline-none focus:border-blue-500"
               />
             </div>
 
@@ -175,14 +194,14 @@ export default function CheckIn() {
                 onChange={(e) => setPinInput(e.target.value)}
                 placeholder="Enter PIN" 
                 disabled={submitting || !isSessionActive}
-                className="w-full text-center font-mono text-2xl tracking-widest rounded-lg border border-slate-700 bg-slate-950 px-4 py-2.5 text-white placeholder-slate-600 outline-none focus:border-blue-500 disabled:opacity-40"
+                className="w-full text-center font-mono text-2xl tracking-widest rounded-lg border border-slate-700 bg-slate-950 px-4 py-2.5 text-white outline-none focus:border-blue-500 disabled:opacity-40"
               />
             </div>
 
             <button 
               type="submit"
               disabled={submitting || !isSessionActive || !pinInput}
-              className="w-full mt-2 rounded-lg bg-emerald-600 py-3 font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="w-full mt-2 rounded-lg bg-emerald-600 py-3 font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-40"
             >
               {submitting ? "Verifying..." : "Submit attendance"}
             </button>
