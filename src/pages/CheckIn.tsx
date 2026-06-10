@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { SiteNav } from '../components/SiteNav'
+import { SiteNav } from '../components/SiteNav' // Modified to a reliable relative path
 import { supabase } from '../lib/supabase'
 
 export default function CheckIn() {
@@ -8,17 +8,34 @@ export default function CheckIn() {
   const [loading, setLoading] = useState<boolean>(true)
   const [userEmail, setUserEmail] = useState<string>('')
   
-  // UI States
+  // UI input text fields
   const [studentIdInput, setStudentIdInput] = useState<string>('')
   const [pinInput, setPinInput] = useState<string>('')
+  
+  // Cloud session tracking states
   const [expectedPin, setExpectedPin] = useState<string | null>(null)
-  const [sessionMessage, setSessionMessage] = useState<string>("Waiting for cloud sync...")
+  const [sessionMessage, setSessionMessage] = useState<string>("Locating live lecture session...")
   const [isSessionActive, setIsSessionActive] = useState<boolean>(false)
   const [activeSessionData, setActiveSessionData] = useState<any>(null)
   const [submitting, setSubmitting] = useState<boolean>(false)
 
-  // 1. Initial State Check
-  const checkInitialSession = async () => {
+  // Helper function to dynamically update the screen when data comes down from the cloud
+  const handleSessionData = (session: any) => {
+    if (session && new Date(session.ends_at).getTime() > Date.now()) {
+      setIsSessionActive(true)
+      setExpectedPin(session.pin_code)
+      setActiveSessionData(session)
+      setSessionMessage(`Live session detected for Group ${session.group_name || 'All'}!`)
+    } else {
+      setIsSessionActive(false)
+      setExpectedPin(null)
+      setActiveSessionData(null)
+      setSessionMessage("No active session. Ask your instructor to start one.")
+    }
+  }
+
+  // 1. Fetch initial status when student opens the application
+  const checkLiveSessionOnLoad = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
@@ -34,59 +51,45 @@ export default function CheckIn() {
         .maybeSingle()
 
       if (error) throw error
-
-      updateSessionUI(activeSession)
+      handleSessionData(activeSession)
     } catch (err: any) {
-      setSessionMessage("Cloud connection offline: " + err.message)
+      console.error("Initial cloud fetch failed:", err.message)
+      setSessionMessage("Connection error: " + err.message)
     } finally {
       setLoading(false)
     }
   }
 
-  // Helper to handle UI updates cleanly
-  const updateSessionUI = (session: any) => {
-    if (session && new Date(session.ends_at).getTime() > Date.now()) {
-      setIsSessionActive(true)
-      setExpectedPin(session.pin_code)
-      setActiveSessionData(session)
-      setSessionMessage(`Live session detected for Group ${session.group_name}!`)
-    } else {
-      setIsSessionActive(false)
-      setExpectedPin(null)
-      setActiveSessionData(null)
-      setSessionMessage("No active session. Ask your instructor to start one.")
-    }
-  }
-
-  // 2. Open Persistent Cloud WebSocket Connection
+  // 2. Connect to the dynamic live server stream via WebSockets
   useEffect(() => {
-    checkInitialSession()
+    checkLiveSessionOnLoad()
 
-    // Subscribe to database changes in realtime
-    const sessionChannel = supabase
-      .channel('live-attendance-channel')
+    // Create a live pipeline to your database table
+    const databaseSubscription = supabase
+      .channel('realtime-attendance-updates')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'attendance_sessions' },
         (payload) => {
-          console.log('Realtime update received from cloud:', payload)
-          // If a session was updated or inserted, re-evaluate it immediately
-          if (payload.new && (payload.new as any).is_active) {
-            updateSessionUI(payload.new)
+          console.log('Live cloud database broadcast received:', payload)
+          
+          // If a new active session row is inserted or updated, light up the UI
+          if (payload.new && (payload.new as any).is_active === true) {
+            handleSessionData(payload.new)
           } else {
-            // Session closed or turned off
+            // Instructor ended the session row or deleted it
             setIsSessionActive(false)
             setExpectedPin(null)
             setActiveSessionData(null)
-            setSessionMessage("The attendance session has ended.")
+            setSessionMessage("No active session. Ask your instructor to start one.")
           }
         }
       )
       .subscribe()
 
-    // Cleanup cloud channel on component unmount to prevent memory leaks
+    // Clean up pipeline channel connection on exit
     return () => {
-      supabase.removeChannel(sessionChannel)
+      supabase.removeChannel(databaseSubscription)
     }
   }, [navigate])
 
@@ -134,9 +137,9 @@ export default function CheckIn() {
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-950 text-white font-sans">
-        <div className="text-center space-y-2">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
-          <h3>Connecting to Realtime Cloud...</h3>
+        <div className="space-y-3 text-center">
+          <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <h3 class="text-sm font-medium tracking-wide text-slate-300">Establishing cloud connection sync...</h3>
         </div>
       </div>
     )
@@ -160,7 +163,8 @@ export default function CheckIn() {
             <p><strong>Step 2:</strong> Enter your registered Student ID and the PIN below.</p>
           </div>
 
-          <div className={`p-3 rounded-lg mb-6 text-xs font-medium border transition-colors duration-300 ${
+          {/* Dynamic Warning Banner */}
+          <div className={`p-3 rounded-lg mb-6 text-xs font-medium border transition-all duration-300 ${
             isSessionActive 
               ? 'bg-emerald-950/40 text-emerald-400 border-emerald-500/20' 
               : 'bg-rose-950/40 text-rose-400 border-rose-500/20'
@@ -177,9 +181,9 @@ export default function CheckIn() {
                 type="text" 
                 value={studentIdInput}
                 onChange={(e) => setStudentIdInput(e.target.value)}
-                placeholder="82510022" 
+                placeholder="e.g. 82510022" 
                 disabled={submitting}
-                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-2.5 text-white outline-none focus:border-blue-500"
+                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-2.5 text-white placeholder-slate-600 outline-none focus:border-blue-500"
               />
             </div>
 
@@ -194,16 +198,16 @@ export default function CheckIn() {
                 onChange={(e) => setPinInput(e.target.value)}
                 placeholder="Enter PIN" 
                 disabled={submitting || !isSessionActive}
-                className="w-full text-center font-mono text-2xl tracking-widest rounded-lg border border-slate-700 bg-slate-950 px-4 py-2.5 text-white outline-none focus:border-blue-500 disabled:opacity-40"
+                className="w-full text-center font-mono text-2xl tracking-widest rounded-lg border border-slate-700 bg-slate-950 px-4 py-2.5 text-white placeholder-slate-600 outline-none focus:border-blue-500 disabled:opacity-40"
               />
             </div>
 
             <button 
               type="submit"
               disabled={submitting || !isSessionActive || !pinInput}
-              className="w-full mt-2 rounded-lg bg-emerald-600 py-3 font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-40"
+              className="w-full mt-2 rounded-lg bg-emerald-600 py-3 font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              {submitting ? "Verifying..." : "Submit attendance"}
+              {submitting ? "Submitting Request..." : "Submit attendance"}
             </button>
           </form>
 
