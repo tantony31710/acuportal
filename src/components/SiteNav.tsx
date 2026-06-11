@@ -2,7 +2,8 @@ import { Link, useLocation } from 'react-router-dom'
 import { useIsTeacher, revokeTeacher } from '@/lib/auth'
 
 const links = [
-  { to: '/', label: 'Dashboard', icon: '📊', exact: true },
+  { to: '/', label: 'Home', icon: '🏠', exact: true },
+  { to: '/teacher', label: 'Teacher', icon: '📊', teacherOnly: true },
   { to: '/check-in', label: 'Check-in', icon: '✅' },
   { to: '/sessions', label: 'Sessions', icon: '🗂' },
   { to: '/flags', label: 'Flags', icon: '🚩' },

@@ -2,7 +2,8 @@ import { useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { SiteNav } from '@/components/SiteNav'
 import { useIsTeacher } from '@/lib/auth'
-import { validateRoster, saveRosterOverride, clearRosterOverride, hasRosterOverride, type RosterValidationResult } from '@/lib/roster'
+import { validateRoster, saveRosterOverride, clearRosterOverride, hasRosterOverride, ROSTER, type RosterValidationResult } from '@/lib/roster'
+import { downloadCsv, exportRosterCsv } from '@/lib/attendance-api'
 
 type Mapped = { id: string; name: string; group: string; advisor: string }
 
@@ -95,7 +96,12 @@ function AdminPanel() {
             <h1 className="text-3xl font-semibold tracking-tight text-foreground">Admin</h1>
             <p className="mt-2 text-sm text-muted-foreground">Upload a new roster CSV. Every row is validated before saving.</p>
           </div>
-          {hasOverride && <button onClick={reset} className="rounded-md border border-border px-3 py-2 text-xs text-muted-foreground hover:bg-secondary">Revert to bundled roster</button>}
+          <div className="flex gap-2">
+            <button onClick={() => downloadCsv(exportRosterCsv(), `roster_${ROSTER.length}_students.csv`)} className="rounded-md border border-border px-3 py-2 text-xs text-muted-foreground hover:bg-secondary">
+              Download current roster CSV
+            </button>
+            {hasOverride && <button onClick={reset} className="rounded-md border border-border px-3 py-2 text-xs text-muted-foreground hover:bg-secondary">Revert to bundled roster</button>}
+          </div>
         </div>
 
         <div className="rounded-xl border border-border bg-card p-5">
