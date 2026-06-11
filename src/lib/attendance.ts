@@ -1,126 +1,175 @@
+import { supabase } from './supabase'
 import { ROSTER, type Group } from './roster'
-
-export type SubmissionRecord = {
-  studentId: string; timestamp: number; pinUsed: string
-  status: 'present' | 'flagged'; reason?: string; fingerprint: string
-}
+export type { Group }
 
 export type Session = {
   id: string; pin: string; group: Group
-  startedAt: number; endsAt: number; closedAt: number | null
-  windowMinutes: number; submissions: SubmissionRecord[]
+  startedAt: number; endsAt: number; isActive: boolean; windowMinutes: number
+}
+export type Submission = {
+  id: string; sessionId: string; studentId: string
+  status: 'present' | 'flagged' | 'late'; flagReason?: string
+  fingerprint: string; submittedAt: number
 }
 
-const SESSIONS_KEY = 'ap_sessions_v1'
-const ACTIVE_KEY = 'ap_active_session_v1'
-
-function read<T>(k: string, fb: T): T {
-  try { const r = localStorage.getItem(k); return r ? JSON.parse(r) as T : fb } catch { return fb }
-}
-function write<T>(k: string, v: T) {
-  localStorage.setItem(k, JSON.stringify(v))
-  window.dispatchEvent(new Event('ap:update'))
-}
-
-export const getSessions = (): Session[] => read<Session[]>(SESSIONS_KEY, [])
-export const getActiveSessionId = (): string | null => read<string | null>(ACTIVE_KEY, null)
-
-export function getActiveSession(): Session | null {
-  const id = getActiveSessionId(); if (!id) return null
-  const s = getSessions().find(x => x.id === id) ?? null; if (!s) return null
-  if (!s.closedAt && Date.now() > s.endsAt) return closeSession(s.id)
-  return s
-}
-
-function generatePin(): string {
-  const arr = new Uint32Array(6); crypto.getRandomValues(arr)
-  return Array.from(arr, n => n % 10).join('')
-}
-
-export function startSession(opts: { group: Group; windowMinutes: number }): Session {
-  const eid = getActiveSessionId(); if (eid) closeSession(eid)
-  const now = Date.now()
-  const session: Session = {
-    id: `S-${new Date(now).toISOString().slice(0,16).replace(/[-:T]/g,'')}`,
-    pin: generatePin(), group: opts.group,
-    startedAt: now, endsAt: now + opts.windowMinutes * 60_000,
-    closedAt: null, windowMinutes: opts.windowMinutes, submissions: [],
+function rowToSession(d: any): Session {
+  return {
+    id: d.id, pin: d.pin_code, group: d.group_name as Group,
+    startedAt: new Date(d.started_at ?? d.created_at).getTime(),
+    endsAt: new Date(d.ends_at).getTime(),
+    isActive: d.is_active, windowMinutes: d.window_minutes ?? 15,
   }
-  const all = getSessions(); all.unshift(session)
-  write(SESSIONS_KEY, all); write(ACTIVE_KEY, session.id)
-  return session
 }
 
-export function closeSession(id: string): Session | null {
-  const all = getSessions(); const idx = all.findIndex(s => s.id === id); if (idx === -1) return null
-  if (!all[idx].closedAt) { all[idx] = { ...all[idx], closedAt: Date.now() }; write(SESSIONS_KEY, all) }
-  if (getActiveSessionId() === id) write(ACTIVE_KEY, null)
-  return all[idx]
+export async function getActiveSession(): Promise<Session | null> {
+  const { data } = await supabase.from('attendance_sessions').select('*')
+    .eq('is_active', true).gt('ends_at', new Date().toISOString())
+    .order('created_at', { ascending: false }).limit(1).maybeSingle()
+  return data ? rowToSession(data) : null
 }
 
-export function submitAttendance(input: { studentId: string; pin: string; fingerprint: string }) {
-  const active = getActiveSession()
+export async function getSessions(): Promise<Session[]> {
+  const { data } = await supabase.from('attendance_sessions').select('*').order('created_at', { ascending: false })
+  return (data ?? []).map(rowToSession)
+}
+
+export async function getSubmissions(sessionId: string): Promise<Submission[]> {
+  const { data } = await supabase.from('attendance_submissions').select('*').eq('session_id', sessionId)
+  return (data ?? []).map(d => ({
+    id: d.id, sessionId: d.session_id, studentId: d.student_id,
+    status: d.status as any, flagReason: d.flag_reason ?? undefined,
+    fingerprint: d.fingerprint ?? '', submittedAt: new Date(d.created_at).getTime(),
+  }))
+}
+
+export async function getAllSubmissions(): Promise<Submission[]> {
+  const { data } = await supabase.from('attendance_submissions').select('*').order('created_at', { ascending: false })
+  return (data ?? []).map(d => ({
+    id: d.id, sessionId: d.session_id, studentId: d.student_id,
+    status: d.status as any, flagReason: d.flag_reason ?? undefined,
+    fingerprint: d.fingerprint ?? '', submittedAt: new Date(d.created_at).getTime(),
+  }))
+}
+
+export async function startSession(opts: { group: Group; windowMinutes: number }): Promise<Session> {
+  await supabase.from('attendance_sessions').update({ is_active: false }).eq('is_active', true)
+  const now = new Date()
+  const arr = new Uint32Array(6); crypto.getRandomValues(arr)
+  const pin = Array.from(arr, n => n % 10).join('')
+  const { data, error } = await supabase.from('attendance_sessions').insert({
+    pin_code: pin, group_name: opts.group, is_active: true,
+    ends_at: new Date(now.getTime() + opts.windowMinutes * 60_000).toISOString(),
+    started_at: now.toISOString(), window_minutes: opts.windowMinutes,
+  }).select('*').single()
+  if (error) throw error
+  return rowToSession(data)
+}
+
+export async function closeSession(id: string): Promise<void> {
+  await supabase.from('attendance_sessions').update({ is_active: false }).eq('id', id)
+}
+
+export async function deleteSession(id: string): Promise<void> {
+  await supabase.from('attendance_submissions').delete().eq('session_id', id)
+  await supabase.from('attendance_sessions').delete().eq('id', id)
+}
+
+export async function submitAttendance(input: { studentId: string; pin: string; fingerprint: string; locationFlag?: string }) {
+  const active = await getActiveSession()
   if (!active) return { ok: false, reason: 'No active session' }
-  if (active.closedAt || Date.now() > active.endsAt) return { ok: false, reason: 'Session window expired' }
+  if (Date.now() > active.endsAt) return { ok: false, reason: 'Session expired' }
   if (input.pin.trim() !== active.pin) return { ok: false, reason: 'Incorrect PIN' }
   const student = ROSTER.find(s => s.id === input.studentId.trim())
   if (!student) return { ok: false, reason: 'Student ID not in roster' }
   if (active.group !== 'ALL' && student.group !== active.group)
     return { ok: false, reason: `Wrong group — session is for ${active.group}` }
-  const ts = Date.now()
-  const dup = active.submissions.find(r => r.studentId === student.id)
-  if (dup) {
-    appendFlag(active.id, { studentId: student.id, timestamp: ts, pinUsed: input.pin, status: 'flagged', reason: 'Duplicate attempt (rejected)', fingerprint: input.fingerprint })
+
+  const ts = new Date().toISOString()
+  const isLate = Date.now() > active.startedAt + (active.endsAt - active.startedAt) * 0.8
+
+  const { data: existing } = await supabase.from('attendance_submissions').select('id')
+    .eq('session_id', active.id).eq('student_id', student.id).maybeSingle()
+  if (existing) {
+    await supabase.from('attendance_submissions').insert({
+      session_id: active.id, student_id: student.id, created_at: ts,
+      status: 'flagged', flag_reason: 'Duplicate attempt (rejected)', fingerprint: input.fingerprint,
+    })
     return { ok: false, reason: 'Already checked in — one response per person' }
   }
-  const reuse = active.submissions.find(r => r.fingerprint === input.fingerprint && r.studentId !== student.id && ts - r.timestamp < 60_000)
+
+  const since = new Date(Date.now() - 60_000).toISOString()
+  const { data: reuse } = await supabase.from('attendance_submissions').select('student_id')
+    .eq('session_id', active.id).eq('fingerprint', input.fingerprint)
+    .neq('student_id', student.id).gte('created_at', since).maybeSingle()
   if (reuse) {
-    appendFlag(active.id, { studentId: student.id, timestamp: ts, pinUsed: input.pin, status: 'flagged', reason: 'Shared device fingerprint (proxy rejected)', fingerprint: input.fingerprint })
-    return { ok: false, reason: 'This device already submitted for another student' }
+    await supabase.from('attendance_submissions').insert({
+      session_id: active.id, student_id: student.id, created_at: ts,
+      status: 'flagged', flag_reason: 'Shared device fingerprint (proxy rejected)', fingerprint: input.fingerprint,
+    })
+    return { ok: false, reason: 'This device was used by another student recently' }
   }
-  const all = getSessions(); const idx = all.findIndex(s => s.id === active.id)
-  all[idx] = { ...all[idx], submissions: [...all[idx].submissions, { studentId: student.id, timestamp: ts, pinUsed: input.pin, status: 'present', fingerprint: input.fingerprint }] }
-  write(SESSIONS_KEY, all)
-  return { ok: true, studentName: student.name }
-}
 
-function appendFlag(sessionId: string, flag: SubmissionRecord) {
-  const all = getSessions(); const idx = all.findIndex(s => s.id === sessionId)
-  if (idx !== -1) { all[idx] = { ...all[idx], submissions: [...all[idx].submissions, flag] }; write(SESSIONS_KEY, all) }
-}
-
-export function summarizeSession(s: Session) {
-  const roster = s.group === 'ALL' ? ROSTER : ROSTER.filter(r => r.group === s.group)
-  const presentIds = new Set(s.submissions.filter(r => r.status === 'present').map(r => r.studentId))
-  const flaggedIds = new Set(s.submissions.filter(r => r.status === 'flagged').map(r => r.studentId))
-  return { total: roster.length, present: presentIds.size, flagged: flaggedIds.size, absent: roster.filter(r => !presentIds.has(r.id) && !flaggedIds.has(r.id)).length }
+  const { error } = await supabase.from('attendance_submissions').insert({
+    session_id: active.id, student_id: student.id, created_at: ts,
+    status: input.locationFlag ? 'flagged' : isLate ? 'late' : 'present',
+    flag_reason: input.locationFlag ?? null, fingerprint: input.fingerprint,
+  })
+  if (error) return { ok: false, reason: 'Database error — try again' }
+  return { ok: true, studentName: student.name, late: isLate }
 }
 
 export function getFingerprint(): string {
   const k = 'ap_fp_v1'; let v = localStorage.getItem(k)
-  if (!v) { v = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2) + '-' + (navigator.hardwareConcurrency || 0) + '-' + screen.width + 'x' + screen.height; localStorage.setItem(k, v) }
+  if (!v) {
+    v = Math.random().toString(36).slice(2) + '-' + (navigator.hardwareConcurrency || 0) + '-' + screen.width + 'x' + screen.height
+    localStorage.setItem(k, v)
+  }
   return v
 }
 
-export function exportFlagsCsv(): string {
-  const rows = [['Session','Student ID','Name','Group','Reason','Timestamp']]
-  for (const s of getSessions())
-    for (const r of s.submissions) {
-      if (r.status !== 'flagged') continue
-      const st = ROSTER.find(x => x.id === r.studentId)
-      rows.push([s.id, r.studentId, st?.name ?? '', st?.group ?? '', r.reason ?? '', new Date(r.timestamp).toISOString()])
-    }
-  return '\uFEFF' + rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n')
+export function exportSessionCsv(session: Session, subs: Submission[]): string {
+  const roster = session.group === 'ALL' ? ROSTER : ROSTER.filter(r => r.group === session.group)
+  const byId = new Map(subs.map(s => [s.studentId, s]))
+  const rows = [['Student ID', 'Name', 'Group', 'Advisor', 'Status', 'Time', 'Flag Reason']]
+  for (const st of roster) {
+    const sub = byId.get(st.id)
+    const status = !sub ? 'ABSENT' : sub.status === 'present' ? 'PRESENT' : sub.status === 'late' ? 'LATE' : 'FLAGGED'
+    rows.push([st.id, st.name, st.group, st.advisor, status,
+      sub ? new Date(sub.submittedAt).toLocaleTimeString() : '', sub?.flagReason || ''])
+  }
+  return '\uFEFF' + rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
 }
 
-export function exportSessionCsv(s: Session): string {
-  const roster = s.group === 'ALL' ? ROSTER : ROSTER.filter(r => r.group === s.group)
-  const presentIds = new Set(s.submissions.filter(r => r.status === 'present').map(r => r.studentId))
-  const flaggedIds = new Set(s.submissions.filter(r => r.status === 'flagged').map(r => r.studentId))
-  const rows = [['Student ID','Name','Group','Advisor','Status','Time','Flag Reason']]
-  for (const st of roster) {
-    const sub = s.submissions.find(r => r.studentId === st.id)
-    rows.push([st.id, st.name, st.group, st.advisor, presentIds.has(st.id) ? 'PRESENT' : flaggedIds.has(st.id) ? 'FLAGGED' : 'ABSENT', sub ? new Date(sub.timestamp).toLocaleTimeString() : '', sub?.reason || ''])
+export function exportFlagsCsv(subs: Submission[]): string {
+  const rows = [['Student ID', 'Name', 'Group', 'Reason', 'Timestamp', 'Fingerprint']]
+  for (const s of subs.filter(x => x.status === 'flagged')) {
+    const st = ROSTER.find(r => r.id === s.studentId)
+    rows.push([s.studentId, st?.name ?? '', st?.group ?? '', s.flagReason ?? '',
+      new Date(s.submittedAt).toISOString(), s.fingerprint])
   }
-  return '\uFEFF' + rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n')
+  return '\uFEFF' + rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
+}
+
+export function exportSummaryCsv(sessions: Session[], allSubs: Submission[]): string {
+  const closed = sessions.filter(s => !s.isActive || new Date(s.endsAt) < new Date())
+  const rows = [['Student ID', 'Name', 'Group', 'Advisor', 'Present', 'Late', 'Flagged', 'Absent', 'Total', '%']]
+  for (const st of ROSTER) {
+    const relevant = closed.filter(s => s.group === 'ALL' || s.group === st.group)
+    const stSubs = allSubs.filter(s => s.studentId === st.id)
+    const p = stSubs.filter(s => s.status === 'present').length
+    const l = stSubs.filter(s => s.status === 'late').length
+    const f = stSubs.filter(s => s.status === 'flagged').length
+    const tot = relevant.length
+    const att = p + l
+    rows.push([st.id, st.name, st.group, st.advisor,
+      String(p), String(l), String(f), String(Math.max(0, tot - att - f)),
+      String(tot), tot > 0 ? Math.round((att / tot) * 100) + '%' : '0%'])
+  }
+  return '\uFEFF' + rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
+}
+
+export function downloadCsv(content: string, filename: string) {
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(new Blob([content], { type: 'text/csv;charset=utf-8;' }))
+  a.download = filename; a.click()
 }

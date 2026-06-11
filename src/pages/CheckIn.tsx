@@ -1,211 +1,220 @@
-import React, { useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
 import { SiteNav } from '../components/SiteNav'
+import { getActiveSession, submitAttendance, getFingerprint, type Session } from '../lib/attendance'
+import { checkLocation } from '../lib/location'
 import { supabase } from '../lib/supabase'
-import { fetchActiveSession, submitCheckIn, getFingerprint, type DbSession } from '../lib/attendance-api'
+
+type MsgType = 'success' | 'error' | 'warning' | 'info'
 
 export default function CheckIn() {
-  const [searchParams] = useSearchParams()
-  const [loading, setLoading] = useState(true)
-  const [studentIdInput, setStudentIdInput] = useState('')
-  const [pinInput, setPinInput] = useState(searchParams.get('pin') ?? '')
-  const [fingerprint, setFingerprint] = useState('')
-  const [sessionMessage, setSessionMessage] = useState('Locating live lecture session...')
-  const [isSessionActive, setIsSessionActive] = useState(false)
-  const [activeSession, setActiveSession] = useState<DbSession | null>(null)
+  const [session, setSession] = useState<Session | null>(null)
+  const [studentId, setStudentId] = useState('')
+  const [pin, setPin] = useState('')
+  const [msg, setMsg] = useState<{ type: MsgType; text: string } | null>(null)
   const [submitting, setSubmitting] = useState(false)
-  const [confirmation, setConfirmation] = useState<{ name: string; status: string } | null>(null)
-  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [locationStatus, setLocationStatus] = useState<'idle' | 'checking' | 'ok' | 'flagged' | 'denied'>('idle')
+  const [locationDetail, setLocationDetail] = useState('')
+  const fingerprint = useRef(getFingerprint())
+  const pinRefs = useRef<(HTMLInputElement | null)[]>([])
 
-  const handleSessionData = (session: DbSession | null) => {
-    if (session && new Date(session.ends_at).getTime() > Date.now()) {
-      setIsSessionActive(true)
-      setActiveSession(session)
-      if (!pinInput) setPinInput(session.pin_code)
-      setSessionMessage(`Live session for Group ${session.group_name || 'All'}!`)
-    } else {
-      setIsSessionActive(false)
-      setActiveSession(null)
-      setSessionMessage('No active session. Ask your instructor to start one.')
-    }
-  }
-
-  const loadSession = async () => {
-    try {
-      const session = await fetchActiveSession()
-      handleSessionData(session)
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Connection error'
-      setSessionMessage(msg)
-    } finally {
-      setLoading(false)
-    }
+  const fetchSession = async () => {
+    const s = await getActiveSession()
+    setSession(s)
   }
 
   useEffect(() => {
-    setFingerprint(getFingerprint())
-    loadSession()
+    fetchSession()
+    const interval = setInterval(fetchSession, 5000)
 
+    // Realtime subscription
     const channel = supabase
-      .channel('realtime-attendance-updates')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance_sessions' }, (payload) => {
-        if (payload.new && (payload.new as DbSession).is_active === true) {
-          handleSessionData(payload.new as DbSession)
-        } else {
-          setIsSessionActive(false)
-          setActiveSession(null)
-          setSessionMessage('No active session. Ask your instructor to start one.')
-        }
+      .channel('checkin-session-watch')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance_sessions' }, () => {
+        fetchSession()
       })
       .subscribe()
 
-    const poll = setInterval(loadSession, 5000)
     return () => {
+      clearInterval(interval)
       supabase.removeChannel(channel)
-      clearInterval(poll)
     }
   }, [])
 
-  useEffect(() => {
-    const pinFromUrl = searchParams.get('pin')
-    if (pinFromUrl) setPinInput(pinFromUrl)
-  }, [searchParams])
-
-  const handleAttendanceSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setErrorMsg(null)
-    setConfirmation(null)
-    if (!isSessionActive || !activeSession) return
+    setMsg(null)
+    if (!studentId.trim()) { setMsg({ type: 'error', text: 'Enter your Student ID' }); return }
+    if (pin.trim().length !== 6) { setMsg({ type: 'error', text: 'PIN must be 6 digits' }); return }
+    if (!session) { setMsg({ type: 'error', text: 'No active session' }); return }
 
-    if (!studentIdInput.trim()) {
-      setErrorMsg('Please enter your Student ID.')
-      return
-    }
-    if (!pinInput.trim()) {
-      setErrorMsg('Please enter the session PIN.')
-      return
-    }
+    setSubmitting(true)
 
-    try {
-      setSubmitting(true)
-      const result = await submitCheckIn({
-        session: activeSession,
-        studentId: studentIdInput,
-        pin: pinInput,
-        fingerprint,
+    // Step 1: Location check
+    setLocationStatus('checking')
+    setMsg({ type: 'info', text: '📍 Checking your location...' })
+
+    const locResult = await checkLocation()
+    let locationFlag: string | null = null
+
+    if (!locResult.ok) {
+      locationFlag = locResult.reason
+      setLocationStatus(locResult.reason.includes('denied') ? 'denied' : 'flagged')
+      setLocationDetail(locResult.reason)
+      setMsg({
+        type: 'warning',
+        text: `⚠️ ${locResult.reason} — submission recorded as flagged`
       })
+    } else {
+      setLocationStatus('ok')
+      setLocationDetail(`${locResult.distance}m from campus`)
+    }
 
-      if (!result.ok) {
-        setErrorMsg(result.reason)
-        return
+    // Step 2: Submit attendance (with location flag info embedded in fingerprint if flagged)
+    const fingerprintWithLocation = locationFlag
+      ? `${fingerprint.current}|LOC_FLAG:${locationFlag}`
+      : fingerprint.current
+
+    const result = await submitAttendance({
+      studentId: studentId.trim(),
+      pin: pin.trim(),
+      fingerprint: fingerprintWithLocation,
+      locationFlag: locationFlag ?? undefined,
+    })
+
+    if (result.ok) {
+      if (result.late) {
+        setMsg({ type: 'warning', text: `⏰ Recorded as LATE for ${result.studentName}` })
+      } else if (locationFlag) {
+        setMsg({ type: 'warning', text: `⚠️ Flagged (location) but recorded for ${result.studentName}` })
+      } else {
+        setMsg({ type: 'success', text: `✓ Attendance recorded for ${result.studentName}` })
       }
-
-      setConfirmation({
-        name: result.studentName,
-        status: result.status === 'late' ? 'Late (checked in during final 2 minutes)' : 'Present',
-      })
-      setStudentIdInput('')
-    } catch (err: unknown) {
-      setErrorMsg(err instanceof Error ? err.message : 'Submission failed')
-    } finally {
-      setSubmitting(false)
+      setStudentId('')
+      setPin('')
+      setLocationStatus('idle')
+    } else {
+      setMsg({ type: 'error', text: result.reason ?? 'Submission failed' })
     }
+
+    setSubmitting(false)
   }
 
-  if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-950 text-white font-sans">
-        <div className="space-y-3 text-center">
-          <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto" />
-          <h3 className="text-sm font-medium tracking-wide text-slate-300">Connecting to live session...</h3>
-        </div>
-      </div>
-    )
+  const msgColors: Record<MsgType, string> = {
+    success: 'bg-emerald-950 text-emerald-400 border-emerald-800',
+    error: 'bg-red-950 text-red-400 border-red-800',
+    warning: 'bg-amber-950 text-amber-400 border-amber-800',
+    info: 'bg-blue-950 text-blue-400 border-blue-800',
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white font-sans">
+    <div className="min-h-screen bg-slate-950 text-white">
       <SiteNav />
       <main className="mx-auto max-w-md px-5 py-12">
-        <div className="rounded-xl border border-slate-800 bg-slate-900 p-6 shadow-xl text-center">
+        <div className="rounded-2xl border border-slate-800 bg-slate-900 p-7 shadow-2xl">
+
           <div className="mb-2 inline-block rounded-full bg-slate-800 px-3 py-1 text-[11px] uppercase tracking-wider text-slate-400">
             Student check-in
           </div>
-
-          <h1 className="text-2xl font-bold mt-2">Enter Student ID &amp; Session PIN</h1>
-          <p className="text-xs text-slate-400 mt-1 mb-6">No login required — just your Student ID</p>
-
-          <div className="text-left text-xs bg-slate-950 p-4 rounded-lg border border-slate-800 mb-6 space-y-2 text-slate-400">
-            <p><strong>Step 1:</strong> Your instructor displays the PIN (or scan their QR code).</p>
-            <p><strong>Step 2:</strong> Enter your Student ID and PIN below.</p>
+          <h1 className="mt-2 text-2xl font-bold">Enter Student ID & Session PIN</h1>
+          <div className="mt-2 mb-5 text-xs text-slate-400 space-y-1">
+            <p><strong className="text-slate-300">Step 1:</strong> Your instructor displays the session PIN on screen (or scan their QR code).</p>
+            <p><strong className="text-slate-300">Step 2:</strong> Enter your registered Student ID and the PIN below.</p>
           </div>
 
-          <div className={`p-3 rounded-lg mb-6 text-xs font-medium border transition-all duration-300 ${
-            isSessionActive
-              ? 'bg-emerald-950/40 text-emerald-400 border-emerald-500/20'
-              : 'bg-rose-950/40 text-rose-400 border-rose-500/20'
+          {/* Session status banner */}
+          <div className={`mb-5 rounded-lg border px-4 py-3 text-xs font-medium transition-all ${
+            session
+              ? 'border-emerald-700 bg-emerald-950 text-emerald-400'
+              : 'border-rose-800 bg-rose-950 text-rose-400'
           }`}>
-            {sessionMessage}
+            {session
+              ? `✓ Live session active — Group ${session.group}`
+              : 'No active session. Ask your instructor to start one.'}
           </div>
 
-          {confirmation && (
-            <div className="mb-6 rounded-lg border border-emerald-500/30 bg-emerald-950/50 p-5 text-center">
-              <div className="text-3xl mb-2">✓</div>
-              <div className="text-lg font-bold text-emerald-300">Check-in confirmed</div>
-              <div className="mt-2 font-arabic text-xl text-white" dir="rtl">{confirmation.name}</div>
-              <div className="mt-1 text-xs text-emerald-400">{confirmation.status}</div>
+          {/* Location indicator */}
+          {locationStatus !== 'idle' && (
+            <div className={`mb-4 rounded-lg border px-3 py-2 text-xs flex items-center gap-2 ${
+              locationStatus === 'checking' ? 'border-blue-800 bg-blue-950 text-blue-400' :
+              locationStatus === 'ok' ? 'border-emerald-800 bg-emerald-950 text-emerald-400' :
+              'border-amber-800 bg-amber-950 text-amber-400'
+            }`}>
+              {locationStatus === 'checking' && <span className="animate-spin">⟳</span>}
+              {locationStatus === 'ok' && '📍'}
+              {(locationStatus === 'flagged' || locationStatus === 'denied') && '⚠️'}
+              <span>
+                {locationStatus === 'checking' && 'Checking location...'}
+                {locationStatus === 'ok' && `On campus (${locationDetail})`}
+                {locationStatus === 'flagged' && locationDetail}
+                {locationStatus === 'denied' && 'Location access denied'}
+              </span>
             </div>
           )}
 
-          {errorMsg && (
-            <div className="mb-6 rounded-lg border border-rose-500/30 bg-rose-950/40 p-3 text-xs text-rose-300">
-              {errorMsg}
-            </div>
-          )}
-
-          <form onSubmit={handleAttendanceSubmit} className="space-y-5 text-left">
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">
-                Student ID
-              </label>
+              <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-1.5">Student ID</label>
               <input
                 type="text"
-                inputMode="numeric"
-                value={studentIdInput}
-                onChange={e => setStudentIdInput(e.target.value.replace(/\D/g, ''))}
-                placeholder="e.g. 82510022"
+                value={studentId}
+                onChange={e => setStudentId(e.target.value)}
+                placeholder="82510022"
+                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-2.5 text-white placeholder-slate-600 outline-none focus:border-teal-500"
                 disabled={submitting}
-                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-2.5 text-white placeholder-slate-600 outline-none focus:border-blue-500"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">
-                Session PIN
-              </label>
-              <input
-                type="text"
-                inputMode="numeric"
-                maxLength={6}
-                value={pinInput}
-                onChange={e => setPinInput(e.target.value.replace(/\D/g, ''))}
-                placeholder="Enter PIN"
-                disabled={submitting || !isSessionActive}
-                className="w-full text-center font-mono text-2xl tracking-widest rounded-lg border border-slate-700 bg-slate-950 px-4 py-2.5 text-white placeholder-slate-600 outline-none focus:border-blue-500 disabled:opacity-40"
-              />
+              <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-1.5">Session PIN</label>
+              <div className="flex gap-2 justify-center">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <input
+                    key={i}
+                    ref={el => { pinRefs.current[i] = el }}
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={1}
+                    value={pin[i] || ''}
+                    onChange={e => {
+                      const val = e.target.value.replace(/\D/g, '')
+                      const arr = pin.split('')
+                      arr[i] = val
+                      const newPin = arr.join('').slice(0, 6)
+                      setPin(newPin)
+                      if (val && i < 5) pinRefs.current[i + 1]?.focus()
+                    }}
+                    onKeyDown={e => {
+                      if (e.key === 'Backspace' && !pin[i] && i > 0) pinRefs.current[i - 1]?.focus()
+                    }}
+                    className="w-11 h-12 rounded-lg border border-slate-700 bg-slate-950 text-center text-xl font-mono text-white outline-none focus:border-teal-500"
+                    disabled={submitting || !session}
+                  />
+                ))}
+              </div>
             </div>
+
+            {msg && (
+              <div className={`rounded-lg border px-4 py-2.5 text-sm font-medium ${msgColors[msg.type]}`}>
+                {msg.text}
+              </div>
+            )}
 
             <button
               type="submit"
-              disabled={submitting || !isSessionActive || !pinInput}
-              className="w-full mt-2 rounded-lg bg-emerald-600 py-3 font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed"
+              disabled={submitting || !session}
+              className="w-full rounded-lg bg-teal-500 py-3 font-semibold text-white transition hover:bg-teal-400 disabled:opacity-40"
             >
-              {submitting ? 'Submitting...' : 'Submit attendance'}
+              {submitting ? (
+                <span className="flex items-center justify-center gap-2">
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  {locationStatus === 'checking' ? 'Checking location...' : 'Submitting...'}
+                </span>
+              ) : 'Submit attendance'}
             </button>
           </form>
 
-          <div className="mt-4 text-[10px] text-slate-600 font-mono truncate">
-            Device: {fingerprint.slice(0, 16)}...
+          <div className="mt-4 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-[10px] text-slate-600 font-mono break-all">
+            Device: {fingerprint.current.slice(0, 20)}...
           </div>
         </div>
       </main>
