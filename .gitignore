@@ -1,5 +1,28 @@
-﻿node_modules
-dist
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment variables — NEVER commit these
 .env
 .env.local
+.env.development
+.env.production
+.env.staging
+src/.env
+# Allow the example template only
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/settings.json
+
+# Vercel
 .vercel

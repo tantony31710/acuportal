@@ -1,20 +1,31 @@
 import { createClient } from '@supabase/supabase-js'
 
-// Try reading with and without the VITE_ prefix to prevent Vercel connection drops
-const supabaseUrl = 
-  import.meta.env.VITE_SUPABASE_URL || 
-  (import.meta.env as any).SUPABASE_URL || 
-  'https://beefbianpgvjmzsdkwvd.supabase.co'
+// ── Environment variable validation ──────────────────────────────────────────
+// Keys are loaded from .env.local (local dev) or your hosting provider's
+// environment settings (Vercel / Netlify). NEVER use hardcoded fallbacks —
+// they get bundled into the JS and become public.
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-const supabaseAnonKey = 
-  import.meta.env.VITE_SUPABASE_ANON_KEY || 
-  (import.meta.env as any).SUPABASE_ANON_KEY || 
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJlZWZiaWFucGd2am16c2Rrd3ZkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1Nzk0NjcsImV4cCI6MjA5NjE1NTQ2N30.E_mxSnW-CaUfz9a7KkCjimN1LLCEuLWlHH-34956_YU'
+if (!supabaseUrl || !supabaseAnonKey) {
+  // Fail loudly in development so misconfiguration is caught immediately.
+  // In production this path should never be reached if env vars are set correctly.
+  throw new Error(
+    '[AcuPortal] Missing Supabase environment variables.\n' +
+    'Ensure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are set in .env.local (dev) ' +
+    'or in your hosting provider\'s environment settings (production).\n' +
+    'Never use the service_role key on the frontend — anon key only.'
+  )
+}
 
+// ── Client ───────────────────────────────────────────────────────────────────
+// Uses sessionStorage so the token is wiped when the browser tab closes.
+// autoRefreshToken keeps the session alive during an active session.
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    storage: window.sessionStorage, // Wipes token context automatically when browser tab finishes or closes
+    storage: typeof window !== 'undefined' ? window.sessionStorage : undefined,
     autoRefreshToken: true,
-    persistSession: true
-  }
+    persistSession: true,
+    detectSessionInUrl: true,
+  },
 })
