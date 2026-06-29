@@ -1,255 +1,272 @@
-import { useRef, useMemo } from 'react'
+import { useRef, useMemo, Suspense } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
-import { Sphere, MeshDistortMaterial, Billboard, Text } from '@react-three/drei'
+import { MeshWobbleMaterial } from '@react-three/drei'
 import * as THREE from 'three'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface OrbProps {
-  /** 0–100 */
-  attendancePercent: number
-  /** Total students in this session */
-  totalStudents: number
-  /** Number of present students */
-  presentStudents: number
+  presentCount: number
+  absentCount: number
+  totalCount: number
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Colour helper ────────────────────────────────────────────────────────────
 
-function orbColor(pct: number): THREE.Color {
-  if (pct >= 75) return new THREE.Color('#22c55e')   // green-500
+function attendanceColor(pct: number): THREE.Color {
+  // green ≥ 75 %  /  amber 50–74 %  /  red < 50 %
+  if (pct >= 75) return new THREE.Color('#22c55e')   // emerald-500
   if (pct >= 50) return new THREE.Color('#f59e0b')   // amber-500
-  return new THREE.Color('#ef4444')                   // red-500
+  return new THREE.Color('#ef4444')                  // red-500
 }
 
-function glowColor(pct: number): string {
-  if (pct >= 75) return '#22c55e'
-  if (pct >= 50) return '#f59e0b'
-  return '#ef4444'
+// ─── Central glowing orb ─────────────────────────────────────────────────────
+
+function CentralOrb({ color }: { color: THREE.Color }) {
+  const meshRef = useRef<THREE.Mesh>(null)
+  const t = useRef(0)
+
+  useFrame((_, delta) => {
+    t.current += delta
+    if (meshRef.current) {
+      // Subtle pulsing scale: oscillates between 0.93 and 1.07
+      const pulse = 1 + 0.07 * Math.sin(t.current * 1.8)
+      meshRef.current.scale.setScalar(pulse)
+    }
+  })
+
+  return (
+    <mesh ref={meshRef}>
+      <sphereGeometry args={[1.1, 64, 64]} />
+      {/* @ts-expect-error MeshWobbleMaterial is from drei */}
+      <MeshWobbleMaterial
+        color={color}
+        emissive={color}
+        emissiveIntensity={0.55}
+        factor={0.08}
+        speed={1.2}
+        roughness={0.15}
+        metalness={0.3}
+      />
+    </mesh>
+  )
 }
 
-// ─── Particle system ──────────────────────────────────────────────────────────
+// ─── Particle system ─────────────────────────────────────────────────────────
 
-interface ParticlesProps {
-  total: number
-  present: number
+interface Particle {
+  position: THREE.Vector3
+  phase: number        // random phase offset for orbit
+  radius: number       // orbit radius
+  speed: number        // orbit speed multiplier
+  isAbsent: boolean
+  driftSpeed: number   // for absent particles drifting outward
+  driftPhase: number
 }
 
-function Particles({ total, present }: ParticlesProps) {
-  const meshRef = useRef<THREE.InstancedMesh>(null)
+function Particles({ presentCount, absentCount }: { presentCount: number; absentCount: number }) {
+  const groupRef = useRef<THREE.Group>(null)
 
-  // Build initial positions once
-  const { positions, colors } = useMemo(() => {
-    const count = Math.min(total, 120) // cap for perf
-    const positions: THREE.Vector3[] = []
-    const colors: THREE.Color[] = []
+  // Build particles once from counts (cap for perf)
+  const particles = useMemo<Particle[]>(() => {
+    const cap = 80
+    const pCap = Math.min(presentCount, Math.round(cap * 0.75))
+    const aCap = Math.min(absentCount,  Math.round(cap * 0.25))
+    const list: Particle[] = []
 
-    for (let i = 0; i < count; i++) {
-      const isPresent = i < present
-
-      // Spherical coordinates
+    for (let i = 0; i < pCap; i++) {
       const theta = Math.random() * Math.PI * 2
       const phi   = Math.acos(2 * Math.random() - 1)
-
-      // Present = tight orbit radius 1.6–2.0, absent = drift 2.4–3.4
-      const r = isPresent
-        ? 1.6 + Math.random() * 0.4
-        : 2.4 + Math.random() * 1.0
-
-      positions.push(new THREE.Vector3(
-        r * Math.sin(phi) * Math.cos(theta),
-        r * Math.sin(phi) * Math.sin(theta),
-        r * Math.cos(phi),
-      ))
-
-      colors.push(isPresent
-        ? new THREE.Color('#ffffff')
-        : new THREE.Color('#7f1d1d'),
-      )
+      const r     = 1.7 + Math.random() * 0.9
+      list.push({
+        position: new THREE.Vector3(
+          r * Math.sin(phi) * Math.cos(theta),
+          r * Math.sin(phi) * Math.sin(theta),
+          r * Math.cos(phi),
+        ),
+        phase:      Math.random() * Math.PI * 2,
+        radius:     r,
+        speed:      0.35 + Math.random() * 0.25,
+        isAbsent:   false,
+        driftSpeed: 0,
+        driftPhase: 0,
+      })
     }
-    return { positions, colors }
-  }, [total, present])
 
-  // Per-frame rotation + pulse for present particles
-  const angles = useRef(positions.map(() => Math.random() * Math.PI * 2))
-  const dummy  = useMemo(() => new THREE.Object3D(), [])
+    for (let i = 0; i < aCap; i++) {
+      const theta = Math.random() * Math.PI * 2
+      const phi   = Math.acos(2 * Math.random() - 1)
+      const r     = 1.9 + Math.random() * 1.2
+      list.push({
+        position: new THREE.Vector3(
+          r * Math.sin(phi) * Math.cos(theta),
+          r * Math.sin(phi) * Math.sin(theta),
+          r * Math.cos(phi),
+        ),
+        phase:      Math.random() * Math.PI * 2,
+        radius:     r,
+        speed:      0.1 + Math.random() * 0.1,
+        isAbsent:   true,
+        driftSpeed: 0.04 + Math.random() * 0.03,
+        driftPhase: Math.random() * Math.PI * 2,
+      })
+    }
 
-  useFrame(({ clock }) => {
-    if (!meshRef.current) return
-    const t = clock.getElapsedTime()
+    return list
+  }, [presentCount, absentCount])
 
-    positions.forEach((pos, i) => {
-      const isPresent = i < present
-      const speed     = isPresent ? 0.3 : 0.05
-      angles.current[i] += speed * 0.01
+  // Separate mesh refs for present & absent for instanced rendering
+  const presentMeshRef = useRef<THREE.InstancedMesh>(null)
+  const absentMeshRef  = useRef<THREE.InstancedMesh>(null)
 
-      // Orbit around Y axis
-      const radius = Math.sqrt(pos.x * pos.x + pos.z * pos.z)
-      const angle  = angles.current[i]
+  const presentParticles = useMemo(() => particles.filter(p => !p.isAbsent), [particles])
+  const absentParticles  = useMemo(() => particles.filter(p =>  p.isAbsent), [particles])
 
-      dummy.position.set(
-        radius * Math.cos(angle),
-        pos.y + (isPresent ? Math.sin(t * 2 + i) * 0.05 : Math.sin(t * 0.4 + i) * 0.15),
-        radius * Math.sin(angle),
-      )
-      dummy.scale.setScalar(isPresent ? 0.04 : 0.028)
-      dummy.updateMatrix()
-      meshRef.current!.setMatrixAt(i, dummy.matrix)
-    })
-    meshRef.current.instanceMatrix.needsUpdate = true
-  })
+  const dummy = useMemo(() => new THREE.Object3D(), [])
+  const t = useRef(0)
 
-  const count = positions.length
+  useFrame((_, delta) => {
+    t.current += delta
 
-  return (
-    <instancedMesh ref={meshRef} args={[undefined, undefined, count]}>
-      <sphereGeometry args={[1, 6, 6]} />
-      <meshStandardMaterial vertexColors />
-      {/* inject per-instance colors */}
-      <instancedMesh
-        ref={node => {
-          if (!node) return
-          const colorArr = new Float32Array(count * 3)
-          colors.forEach((c, i) => {
-            colorArr[i * 3]     = c.r
-            colorArr[i * 3 + 1] = c.g
-            colorArr[i * 3 + 2] = c.b
-          })
-          node.geometry.setAttribute('color', new THREE.InstancedBufferAttribute(colorArr, 3))
-        }}
-        args={[undefined, undefined, 0]}
-      />
-    </instancedMesh>
-  )
-}
+    if (presentMeshRef.current) {
+      presentParticles.forEach((p, i) => {
+        const angle = t.current * p.speed + p.phase
+        dummy.position.set(
+          p.radius * Math.cos(angle),
+          p.position.y + 0.2 * Math.sin(t.current * 0.7 + p.phase),
+          p.radius * Math.sin(angle),
+        )
+        dummy.updateMatrix()
+        presentMeshRef.current!.setMatrixAt(i, dummy.matrix)
+      })
+      presentMeshRef.current.instanceMatrix.needsUpdate = true
+    }
 
-// ─── Core orb mesh ────────────────────────────────────────────────────────────
-
-function OrbMesh({ attendancePercent }: { attendancePercent: number }) {
-  const meshRef = useRef<THREE.Mesh>(null)
-  const color   = orbColor(attendancePercent)
-
-  useFrame(({ clock }) => {
-    if (!meshRef.current) return
-    const t = clock.getElapsedTime()
-    meshRef.current.rotation.y = t * 0.2
-    meshRef.current.rotation.x = Math.sin(t * 0.1) * 0.05
-    // subtle scale pulse
-    const pulse = 1 + Math.sin(t * 1.5) * 0.015
-    meshRef.current.scale.setScalar(pulse)
+    if (absentMeshRef.current) {
+      absentParticles.forEach((p, i) => {
+        // Absent particles drift slowly outward
+        const drift = 1 + 0.3 * Math.sin(t.current * p.driftSpeed + p.driftPhase)
+        const angle = t.current * p.speed + p.phase
+        dummy.position.set(
+          p.radius * drift * Math.cos(angle),
+          p.position.y * drift,
+          p.radius * drift * Math.sin(angle),
+        )
+        dummy.updateMatrix()
+        absentMeshRef.current!.setMatrixAt(i, dummy.matrix)
+      })
+      absentMeshRef.current.instanceMatrix.needsUpdate = true
+    }
   })
 
   return (
-    <Sphere ref={meshRef} args={[1, 64, 64]}>
-      <MeshDistortMaterial
-        color={color}
-        distort={0.12}
-        speed={1.5}
-        roughness={0.15}
-        metalness={0.4}
-        emissive={color}
-        emissiveIntensity={0.35}
-      />
-    </Sphere>
-  )
-}
-
-// ─── Floating percentage label ────────────────────────────────────────────────
-
-function PercentLabel({ pct }: { pct: number }) {
-  return (
-    <Billboard follow={true} position={[0, -1.8, 0]}>
-      <Text
-        fontSize={0.32}
-        color={glowColor(pct)}
-        anchorX="center"
-        anchorY="middle"
-        font={undefined}
-      >
-        {pct}%
-      </Text>
-    </Billboard>
+    <group ref={groupRef}>
+      {/* Present: bright white-blue dots */}
+      {presentParticles.length > 0 && (
+        <instancedMesh ref={presentMeshRef} args={[undefined, undefined, presentParticles.length]}>
+          <sphereGeometry args={[0.045, 8, 8]} />
+          <meshStandardMaterial color="#e0f2fe" emissive="#7dd3fc" emissiveIntensity={0.8} />
+        </instancedMesh>
+      )}
+      {/* Absent: dim red dots */}
+      {absentParticles.length > 0 && (
+        <instancedMesh ref={absentMeshRef} args={[undefined, undefined, absentParticles.length]}>
+          <sphereGeometry args={[0.04, 8, 8]} />
+          <meshStandardMaterial color="#7f1d1d" emissive="#ef4444" emissiveIntensity={0.2} transparent opacity={0.55} />
+        </instancedMesh>
+      )}
+    </group>
   )
 }
 
 // ─── Scene ────────────────────────────────────────────────────────────────────
 
-function OrbScene({ attendancePercent, totalStudents, presentStudents }: OrbProps) {
-  const glow = glowColor(attendancePercent)
+function OrbScene({ presentCount, absentCount, totalCount }: OrbProps) {
+  const sceneRef = useRef<THREE.Group>(null)
+  const pct = totalCount > 0 ? (presentCount / totalCount) * 100 : 0
+  const color = attendanceColor(pct)
+
+  useFrame((_, delta) => {
+    if (sceneRef.current) {
+      sceneRef.current.rotation.y += delta * 0.22
+    }
+  })
 
   return (
-    <>
-      {/* Ambient + directional light */}
-      <ambientLight intensity={0.4} />
-      <directionalLight position={[5, 5, 5]} intensity={0.8} />
-      {/* Colored point light = glow effect */}
-      <pointLight color={glow} intensity={3} distance={6} position={[0, 0, 0]} />
+    <group ref={sceneRef}>
+      {/* Glow halo */}
+      <mesh>
+        <sphereGeometry args={[1.5, 32, 32]} />
+        <meshStandardMaterial
+          color={color}
+          transparent
+          opacity={0.06}
+          side={THREE.BackSide}
+        />
+      </mesh>
 
-      <OrbMesh attendancePercent={attendancePercent} />
-      <Particles total={totalStudents} present={presentStudents} />
-      <PercentLabel pct={attendancePercent} />
-    </>
+      <CentralOrb color={color} />
+
+      <Particles presentCount={presentCount} absentCount={absentCount} />
+    </group>
   )
 }
 
-// ─── Public component ─────────────────────────────────────────────────────────
+// ─── WebGL availability check ─────────────────────────────────────────────────
 
-/**
- * AttendanceOrb3D
- *
- * Drop this anywhere in the Teacher dashboard. It renders a self-contained
- * WebGL canvas with no extra wrapper needed.
- *
- * Props:
- *   attendancePercent – 0–100, controls orb color
- *   totalStudents     – drives particle count
- *   presentStudents   – how many white particles (present)
- */
-export function AttendanceOrb3D({ attendancePercent, totalStudents, presentStudents }: OrbProps) {
-  // Respect prefers-reduced-motion: render a static SVG fallback instead
-  const prefersReduced =
-    typeof window !== 'undefined' &&
-    window.matchMedia('(prefers-reduced-motion: reduce)').matches
-
-  if (prefersReduced) {
-    const glow = glowColor(attendancePercent)
-    return (
-      <div
-        aria-label={`Attendance: ${attendancePercent}%`}
-        style={{
-          width: 160,
-          height: 160,
-          borderRadius: '50%',
-          background: `radial-gradient(circle at 40% 35%, ${glow}88, ${glow}22)`,
-          border: `2px solid ${glow}55`,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: glow,
-          fontWeight: 700,
-          fontSize: 28,
-        }}
-      >
-        {attendancePercent}%
-      </div>
+function isWebGLAvailable(): boolean {
+  try {
+    const canvas = document.createElement('canvas')
+    return !!(
+      window.WebGLRenderingContext &&
+      (canvas.getContext('webgl') || canvas.getContext('experimental-webgl'))
     )
+  } catch {
+    return false
+  }
+}
+
+// ─── Fallback ─────────────────────────────────────────────────────────────────
+
+function OrbFallback({ presentCount, totalCount }: { presentCount: number; totalCount: number }) {
+  const pct = totalCount > 0 ? Math.round((presentCount / totalCount) * 100) : 0
+  const color = pct >= 75 ? '#22c55e' : pct >= 50 ? '#f59e0b' : '#ef4444'
+  return (
+    <div className="flex h-[300px] items-center justify-center">
+      <div
+        className="flex h-28 w-28 items-center justify-center rounded-full text-2xl font-extrabold text-white shadow-lg"
+        style={{ background: color, boxShadow: `0 0 40px 8px ${color}55` }}
+      >
+        {pct}%
+      </div>
+    </div>
+  )
+}
+
+// ─── Public export ────────────────────────────────────────────────────────────
+
+export default function AttendanceOrb3D({ presentCount, absentCount, totalCount }: OrbProps) {
+  if (typeof window === 'undefined' || !isWebGLAvailable()) {
+    return <OrbFallback presentCount={presentCount} totalCount={totalCount} />
   }
 
   return (
-    <div
-      aria-label={`3D attendance orb: ${attendancePercent}%`}
-      style={{ width: 220, height: 220 }}
-    >
+    <div style={{ height: 300 }} aria-hidden="true">
       <Canvas
         camera={{ position: [0, 0, 5], fov: 50 }}
-        gl={{ antialias: true, alpha: true }}
+        gl={{ alpha: true, antialias: true }}
         style={{ background: 'transparent' }}
       >
-        <OrbScene
-          attendancePercent={attendancePercent}
-          totalStudents={totalStudents}
-          presentStudents={presentStudents}
-        />
+        <ambientLight intensity={0.6} />
+        <pointLight position={[4, 4, 4]} intensity={1.2} />
+        <pointLight position={[-4, -2, -4]} intensity={0.4} color="#60a5fa" />
+        <Suspense fallback={null}>
+          <OrbScene
+            presentCount={presentCount}
+            absentCount={absentCount}
+            totalCount={totalCount}
+          />
+        </Suspense>
       </Canvas>
     </div>
   )
