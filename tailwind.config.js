@@ -9,8 +9,6 @@ export default {
         arabic: ['Noto Naskh Arabic', 'Amiri', 'serif'],
       },
       colors: {
-        'navy': { 900: '#0f172a', 800: '#1e293b' },
-        'gold': { 400: '#fbbf24', 500: '#f59e0b' },
         primary: { DEFAULT: 'oklch(0.74 0.14 175)', foreground: 'oklch(0.16 0.025 200)' },
         secondary: { DEFAULT: 'oklch(0.28 0.04 200)', foreground: 'oklch(0.97 0.01 180)' },
         background: 'oklch(0.16 0.025 200)',
