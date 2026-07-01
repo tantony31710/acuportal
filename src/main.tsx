@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { Component, useEffect, useState } from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { supabase } from './lib/supabase'
@@ -12,6 +12,53 @@ import { Roster } from './pages/Roster'
 import { Admin } from './pages/Admin'
 import './styles.css'
 
+// ── Error boundary — catches render crashes and shows a message instead of blank ──
+class ErrorBoundary extends Component<
+  { children: React.ReactNode },
+  { error: Error | null }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props)
+    this.state = { error: null }
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { error }
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{
+          display: 'flex', flexDirection: 'column', alignItems: 'center',
+          justifyContent: 'center', minHeight: '100vh', background: '#0d1218',
+          color: '#fff', fontFamily: 'sans-serif', padding: '2rem', gap: '1rem',
+        }}>
+          <div style={{ fontSize: '2rem' }}>⚠️</div>
+          <h2 style={{ margin: 0, color: '#f87171' }}>Something went wrong</h2>
+          <pre style={{
+            background: '#1e293b', padding: '1rem', borderRadius: '8px',
+            color: '#94a3b8', fontSize: '12px', maxWidth: '600px',
+            overflowX: 'auto', whiteSpace: 'pre-wrap',
+          }}>
+            {this.state.error.message}
+          </pre>
+          <button
+            onClick={() => window.location.reload()}
+            style={{
+              background: '#2dd4bf', color: '#0d1218', border: 'none',
+              borderRadius: '8px', padding: '0.6rem 1.5rem',
+              fontWeight: 700, cursor: 'pointer',
+            }}
+          >
+            Reload page
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
+// ── Teacher route guard ───────────────────────────────────────────────────────
 function TeacherRouteGuard({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [isTeacher, setIsTeacher] = useState(false)
@@ -38,8 +85,19 @@ function TeacherRouteGuard({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#111', color: '#fff', fontFamily: 'sans-serif' }}>
-        <h3>Verifying Security Credentials...</h3>
+      <div style={{
+        display: 'flex', justifyContent: 'center', alignItems: 'center',
+        height: '100vh', background: '#0d1218', color: '#2dd4bf',
+        fontFamily: 'sans-serif', gap: '0.75rem',
+      }}>
+        <div style={{
+          width: 20, height: 20, borderRadius: '50%',
+          border: '2px solid rgba(45,212,191,0.3)',
+          borderTopColor: '#2dd4bf',
+          animation: 'spin 0.8s linear infinite',
+        }} />
+        Verifying credentials…
+        <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
       </div>
     )
   }
@@ -48,27 +106,30 @@ function TeacherRouteGuard({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+// ── App ───────────────────────────────────────────────────────────────────────
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/auth" element={<Auth />} />
-        <Route path="/check-in" element={<CheckIn />} />
-        <Route path="/sessions" element={<Sessions />} />
-        <Route path="/flags" element={<Flags />} />
-        <Route path="/roster" element={<Roster />} />
-        <Route path="/admin" element={<Admin />} />
-        <Route
-          path="/teacher"
-          element={
-            <TeacherRouteGuard>
-              <Teacher />
-            </TeacherRouteGuard>
-          }
-        />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/"         element={<Home />} />
+          <Route path="/auth"     element={<Auth />} />
+          <Route path="/check-in" element={<CheckIn />} />
+          <Route path="/sessions" element={<Sessions />} />
+          <Route path="/flags"    element={<Flags />} />
+          <Route path="/roster"   element={<Roster />} />
+          <Route path="/admin"    element={<Admin />} />
+          <Route
+            path="/teacher"
+            element={
+              <TeacherRouteGuard>
+                <Teacher />
+              </TeacherRouteGuard>
+            }
+          />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </ErrorBoundary>
   </React.StrictMode>
 )
