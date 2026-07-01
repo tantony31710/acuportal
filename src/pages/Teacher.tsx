@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react'
-import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import QRCode from 'qrcode'
@@ -21,7 +20,7 @@ import {
   type DbSubmission,
 } from '../lib/attendance-api'
 
-// ── Animated counter ──────────────────────────────────────────────────────────
+// ── Animated number counter ───────────────────────────────────────────────────
 function AnimatedNumber({ value, className = '' }: { value: number; className?: string }) {
   const [display, setDisplay] = useState(0)
   const prev = useRef(0)
@@ -47,17 +46,9 @@ function AnimatedNumber({ value, className = '' }: { value: number; className?: 
 
 // ── Stat card ─────────────────────────────────────────────────────────────────
 function StatCard({
-  label,
-  value,
-  color,
-  icon,
-  delay = 0,
+  label, value, color, icon, delay = 0,
 }: {
-  label: string
-  value: number
-  color: string
-  icon: string
-  delay?: number
+  label: string; value: number; color: string; icon: string; delay?: number
 }) {
   return (
     <motion.div
@@ -75,12 +66,12 @@ function StatCard({
   )
 }
 
-// ── Status badge ──────────────────────────────────────────────────────────────
+// ── Session status badge ──────────────────────────────────────────────────────
 function StatusBadge({ status }: { status: 'Active' | 'Closed' | 'Expired' }) {
   const styles = {
-    Active: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400',
-    Closed: 'border-slate-700 bg-slate-800/60 text-slate-500',
-    Expired: 'border-amber-500/30 bg-amber-500/8 text-amber-500',
+    Active:  'border-emerald-500/40 bg-emerald-500/10 text-emerald-400',
+    Closed:  'border-white/10 bg-white/5 text-white/30',
+    Expired: 'border-amber-500/30 bg-amber-500/10 text-amber-500',
   }
   return (
     <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${styles[status]}`}>
@@ -90,7 +81,7 @@ function StatusBadge({ status }: { status: 'Active' | 'Closed' | 'Expired' }) {
   )
 }
 
-// ── Countdown display ─────────────────────────────────────────────────────────
+// ── Countdown bar ─────────────────────────────────────────────────────────────
 function Countdown({ endsAt }: { endsAt: string }) {
   const [remaining, setRemaining] = useState({ min: 0, sec: 0, pct: 100 })
 
@@ -110,7 +101,6 @@ function Countdown({ endsAt }: { endsAt: string }) {
   }, [endsAt])
 
   const urgent = remaining.min < 2
-
   return (
     <div className="space-y-2">
       <div className="flex items-baseline gap-1">
@@ -119,7 +109,6 @@ function Countdown({ endsAt }: { endsAt: string }) {
         </span>
         <span className="text-xs text-white/30">remaining</span>
       </div>
-      {/* Progress bar */}
       <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/[0.06]">
         <motion.div
           className={`h-full rounded-full ${urgent ? 'bg-red-400' : 'bg-teal-400'}`}
@@ -131,15 +120,9 @@ function Countdown({ endsAt }: { endsAt: string }) {
   )
 }
 
-
 // ── Active session panel ──────────────────────────────────────────────────────
 function ActiveSessionPanel({
-  active,
-  summary,
-  qrCanvasRef,
-  actionLoading,
-  onClose,
-  onExport,
+  active, summary, qrCanvasRef, actionLoading, onClose, onExport,
 }: {
   active: DbSession
   summary: ReturnType<typeof summarizeDbSession>
@@ -157,27 +140,22 @@ function ActiveSessionPanel({
       transition={{ duration: 0.35 }}
       className="space-y-5"
     >
-      {/* Live badge + group */}
       <div className="flex items-center justify-between">
-        <div className="live-badge">
-          <span className="dot" />
-          Live Session
-        </div>
+        <div className="live-badge"><span className="dot" />Live Session</div>
         <span className="rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1 text-xs font-bold text-blue-300">
           {active.group_name}
         </span>
       </div>
 
-      {/* PIN + QR */}
+      {/* PIN + QR row */}
       <div className="grid gap-5 sm:grid-cols-2">
         <div className="rounded-xl border border-white/[0.07] bg-white/[0.03] p-5">
           <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-white/35">Session PIN</div>
-          <div className="mb-3 font-mono text-5xl font-extrabold tracking-[0.18em] text-glow-teal gradient-text-teal">
+          <div className="mb-3 font-mono text-5xl font-extrabold tracking-[0.18em] gradient-text-teal">
             {active.pin_code}
           </div>
           <Countdown endsAt={active.ends_at} />
         </div>
-
         <div className="flex flex-col items-center justify-center rounded-xl border border-white/[0.07] bg-white/[0.03] p-4">
           <div className="mb-2 text-xs text-white/30">Scan to auto-fill PIN</div>
           <div className="rounded-xl bg-white p-2.5 shadow-lg">
@@ -186,33 +164,29 @@ function ActiveSessionPanel({
         </div>
       </div>
 
-      {/* Stats grid */}
+      {/* Live stats */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatCard label="Present" value={summary.present} color="text-emerald-400" icon="✅" delay={0.05} />
-        <StatCard label="Late" value={summary.late} color="text-amber-300" icon="⏰" delay={0.1} />
-        <StatCard label="Flagged" value={summary.flagged} color="text-orange-400" icon="🚩" delay={0.15} />
-        <StatCard label="Absent" value={summary.absent} color="text-slate-400" icon="❌" delay={0.2} />
+        <StatCard label="Late"    value={summary.late}    color="text-amber-300"   icon="⏰" delay={0.1}  />
+        <StatCard label="Flagged" value={summary.flagged} color="text-orange-400"  icon="🚩" delay={0.15} />
+        <StatCard label="Absent"  value={summary.absent}  color="text-white/40"    icon="❌" delay={0.2}  />
       </div>
 
-      {/* Action buttons */}
       <div className="flex gap-3">
         <motion.button
           disabled={actionLoading}
           onClick={onClose}
-          className="flex-1 rounded-xl bg-red-600/80 px-4 py-3 font-bold text-white transition hover:bg-red-500 disabled:opacity-40"
           whileTap={{ scale: 0.97 }}
+          className="flex-1 rounded-xl bg-red-600/80 px-4 py-3 font-bold text-white transition hover:bg-red-500 disabled:opacity-40"
         >
-          {actionLoading ? (
-            <span className="flex items-center justify-center gap-2">
-              <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-              Closing…
-            </span>
-          ) : 'Close Session'}
+          {actionLoading
+            ? <span className="flex items-center justify-center gap-2"><span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />Closing…</span>
+            : 'Close Session'}
         </motion.button>
         <motion.button
           onClick={onExport}
-          className="rounded-xl border border-white/[0.08] bg-white/[0.04] px-5 py-3 text-sm font-semibold text-white/70 transition hover:bg-white/[0.08] hover:text-white"
           whileTap={{ scale: 0.97 }}
+          className="rounded-xl border border-white/[0.08] bg-white/[0.04] px-5 py-3 text-sm font-semibold text-white/70 transition hover:bg-white/[0.08] hover:text-white"
         >
           Export CSV
         </motion.button>
@@ -223,19 +197,11 @@ function ActiveSessionPanel({
 
 // ── Start session panel ───────────────────────────────────────────────────────
 function StartSessionPanel({
-  group,
-  setGroup,
-  windowMin,
-  setWindowMin,
-  actionLoading,
-  onStart,
+  group, setGroup, windowMin, setWindowMin, actionLoading, onStart,
 }: {
-  group: Group
-  setGroup: (g: Group) => void
-  windowMin: number
-  setWindowMin: (n: number) => void
-  actionLoading: boolean
-  onStart: () => void
+  group: Group; setGroup: (g: Group) => void
+  windowMin: number; setWindowMin: (n: number) => void
+  actionLoading: boolean; onStart: () => void
 }) {
   return (
     <motion.div
@@ -247,18 +213,12 @@ function StartSessionPanel({
       className="space-y-6"
     >
       <div className="grid gap-5 sm:grid-cols-2">
-        {/* Group selector */}
         <div>
-          <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-white/40">
-            Target group
-          </label>
+          <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-white/40">Target group</label>
           <div className="flex flex-wrap gap-2">
             {(['ALL', ...GROUPS] as Group[]).map(g => (
               <motion.button
-                key={g}
-                type="button"
-                onClick={() => setGroup(g)}
-                whileTap={{ scale: 0.93 }}
+                key={g} type="button" onClick={() => setGroup(g)} whileTap={{ scale: 0.93 }}
                 className={`rounded-lg border px-3.5 py-1.5 text-xs font-bold transition-all ${
                   group === g
                     ? 'border-teal-500/60 bg-teal-500/15 text-teal-300 shadow-glow-teal'
@@ -270,17 +230,10 @@ function StartSessionPanel({
             ))}
           </div>
         </div>
-
-        {/* Window */}
         <div>
-          <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-white/40">
-            Window (minutes)
-          </label>
+          <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-white/40">Window (minutes)</label>
           <input
-            type="number"
-            min={1}
-            max={180}
-            value={windowMin}
+            type="number" min={1} max={180} value={windowMin}
             onChange={e => setWindowMin(Number(e.target.value) || 15)}
             className="input-glow font-mono"
           />
@@ -288,28 +241,18 @@ function StartSessionPanel({
       </div>
 
       <motion.button
-        disabled={actionLoading}
-        onClick={onStart}
+        disabled={actionLoading} onClick={onStart} whileTap={{ scale: 0.98 }}
         className="btn-glow-teal w-full py-4 text-base text-slate-950 disabled:opacity-40"
-        whileTap={{ scale: 0.98 }}
       >
-        {actionLoading ? (
-          <span className="flex items-center justify-center gap-2">
-            <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-950/30 border-t-slate-950" />
-            Starting session…
-          </span>
-        ) : (
-          <span className="flex items-center justify-center gap-2">
-            <span>▶</span> Start New Live Session
-          </span>
-        )}
+        {actionLoading
+          ? <span className="flex items-center justify-center gap-2"><span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-950/30 border-t-slate-950" />Starting…</span>
+          : '▶ Start New Live Session'}
       </motion.button>
     </motion.div>
   )
 }
 
-
-// ── Main Teacher component ────────────────────────────────────────────────────
+// ── Main component ────────────────────────────────────────────────────────────
 export default function Teacher() {
   const teacher = useIsTeacher()
   const navigate = useNavigate()
@@ -332,45 +275,28 @@ export default function Teacher() {
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
-
       await autoCloseExpiredSessions()
 
       const { data: activeData } = await supabase
-        .from('attendance_sessions')
-        .select('*')
-        .eq('is_active', true)
-        .maybeSingle()
+        .from('attendance_sessions').select('*').eq('is_active', true).maybeSingle()
 
-      const activeSession =
-        activeData && new Date(activeData.ends_at).getTime() > Date.now()
-          ? (activeData as DbSession)
-          : null
+      const activeSession = activeData && new Date(activeData.ends_at).getTime() > Date.now()
+        ? (activeData as DbSession) : null
 
       if (activeData && !activeSession) await closeSession(activeData.id)
-
       setActive(activeSession)
-
-      if (activeSession) {
-        setSubmissions(await fetchSubmissions(activeSession.id))
-      } else {
-        setSubmissions([])
-      }
+      setSubmissions(activeSession ? await fetchSubmissions(activeSession.id) : [])
 
       const { data: historyData } = await supabase
-        .from('attendance_sessions')
-        .select('*')
-        .order('created_at', { ascending: false })
-
+        .from('attendance_sessions').select('*').order('created_at', { ascending: false })
       const history = (historyData ?? []) as DbSession[]
       setSessionsHistory(history)
 
       const subsMap = new Map<string, DbSubmission[]>()
-      for (const s of history) {
-        subsMap.set(s.id, await fetchSubmissions(s.id))
-      }
+      for (const s of history) subsMap.set(s.id, await fetchSubmissions(s.id))
       setAllSubsMap(subsMap)
     } catch (err) {
-      console.error('Failed to sync dashboard:', err)
+      console.error('Dashboard sync error:', err)
     }
   }
 
@@ -382,14 +308,10 @@ export default function Teacher() {
     }
   }, [mounted, teacher])
 
-  // QR code
   useEffect(() => {
     if (!active || !qrCanvasRef.current) return
-    const url = `${window.location.origin}/check-in?pin=${active.pin_code}`
-    QRCode.toCanvas(qrCanvasRef.current, url, {
-      width: 130,
-      margin: 1,
-      color: { dark: '#0f172a', light: '#ffffff' },
+    QRCode.toCanvas(qrCanvasRef.current, `${window.location.origin}/check-in?pin=${active.pin_code}`, {
+      width: 130, margin: 1, color: { dark: '#0f172a', light: '#ffffff' },
     }).catch(() => {})
   }, [active?.pin_code])
 
@@ -405,44 +327,27 @@ export default function Teacher() {
       const pin = Math.floor(100000 + Math.random() * 900000).toString()
       const now = new Date().toISOString()
       const { error } = await supabase.from('attendance_sessions').insert([{
-        pin_code: pin,
-        group_name: group,
-        is_active: true,
-        started_at: now,
-        ends_at: new Date(Date.now() + windowMin * 60000).toISOString(),
+        pin_code: pin, group_name: group, is_active: true,
+        started_at: now, ends_at: new Date(Date.now() + windowMin * 60000).toISOString(),
       }])
       if (error) throw error
       await fetchDashboardData()
     } catch (err) {
-      alert('Error launching session: ' + (err instanceof Error ? err.message : 'Unknown error'))
-    } finally {
-      setActionLoading(false)
-    }
+      alert('Error: ' + (err instanceof Error ? err.message : String(err)))
+    } finally { setActionLoading(false) }
   }
 
   const handleCloseSession = async (id: string) => {
-    try {
-      setActionLoading(true)
-      await closeSession(id)
-      await fetchDashboardData()
-    } catch (err) {
-      alert('Error closing session: ' + (err instanceof Error ? err.message : 'Unknown error'))
-    } finally {
-      setActionLoading(false)
-    }
+    try { setActionLoading(true); await closeSession(id); await fetchDashboardData() }
+    catch (err) { alert('Error: ' + (err instanceof Error ? err.message : String(err))) }
+    finally { setActionLoading(false) }
   }
 
   const handleDeleteSession = async (id: string) => {
     if (!confirm('Delete this session and all its submissions? This cannot be undone.')) return
-    try {
-      setActionLoading(true)
-      await deleteSession(id)
-      await fetchDashboardData()
-    } catch (err) {
-      alert('Delete failed: ' + (err instanceof Error ? err.message : 'Unknown error'))
-    } finally {
-      setActionLoading(false)
-    }
+    try { setActionLoading(true); await deleteSession(id); await fetchDashboardData() }
+    catch (err) { alert('Error: ' + (err instanceof Error ? err.message : String(err))) }
+    finally { setActionLoading(false) }
   }
 
   const handleExportCsv = async (session: DbSession) => {
@@ -459,13 +364,8 @@ export default function Teacher() {
       <SiteNav />
 
       <main className="relative z-10 mx-auto max-w-6xl px-5 py-10">
-        {/* Page header */}
-        <motion.section
-          className="mb-8"
-          initial={{ opacity: 0, y: -16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-        >
+        {/* Header */}
+        <motion.section className="mb-8" initial={{ opacity: 0, y: -16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
           <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-blue-300">
             <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-ping-slow" />
             Teacher Control Panel
@@ -476,12 +376,10 @@ export default function Teacher() {
 
         {/* Top grid */}
         <div className="grid gap-6 lg:grid-cols-3">
-          {/* Session control card */}
+          {/* Session control */}
           <motion.section
             className="card-glass p-6 lg:col-span-2"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1, duration: 0.5 }}
+            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1, duration: 0.5 }}
           >
             <h2 className="mb-5 text-lg font-semibold text-white">
               {active ? 'Active Session' : 'Start a Session'}
@@ -489,21 +387,16 @@ export default function Teacher() {
             <AnimatePresence mode="wait">
               {active && summary ? (
                 <ActiveSessionPanel
-                  active={active}
-                  summary={summary}
-                  qrCanvasRef={qrCanvasRef}
+                  active={active} summary={summary} qrCanvasRef={qrCanvasRef}
                   actionLoading={actionLoading}
                   onClose={() => handleCloseSession(active.id)}
                   onExport={() => handleExportCsv(active)}
                 />
               ) : (
                 <StartSessionPanel
-                  group={group}
-                  setGroup={setGroup}
-                  windowMin={windowMin}
-                  setWindowMin={setWindowMin}
-                  actionLoading={actionLoading}
-                  onStart={handleStartSession}
+                  group={group} setGroup={setGroup}
+                  windowMin={windowMin} setWindowMin={setWindowMin}
+                  actionLoading={actionLoading} onStart={handleStartSession}
                 />
               )}
             </AnimatePresence>
@@ -512,28 +405,19 @@ export default function Teacher() {
           {/* Side stats */}
           <motion.aside
             className="space-y-4"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.2, duration: 0.5 }}
+            initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2, duration: 0.5 }}
           >
-            <StatCard label="Total Students" value={275} color="text-teal-300" icon="🎓" />
-            <StatCard label="Total Sessions" value={sessionsHistory.length} color="text-white" icon="🗂" />
-            {active && summary && (
-              <>
-                <StatCard label="Present Now" value={summary.present} color="text-emerald-400" icon="✅" />
-                <StatCard label="Flagged Now" value={summary.flagged} color="text-orange-400" icon="🚩" />
-              </>
-            )}
+            <StatCard label="Total Students" value={275}                      color="text-teal-300"   icon="🎓" />
+            <StatCard label="Total Sessions" value={sessionsHistory.length}    color="text-white"     icon="🗂" />
+            {active && summary && <>
+              <StatCard label="Present Now"  value={summary.present}  color="text-emerald-400" icon="✅" />
+              <StatCard label="Flagged Now"  value={summary.flagged}  color="text-orange-400"  icon="🚩" />
+            </>}
           </motion.aside>
         </div>
 
         {/* Semester summary */}
-        <motion.section
-          className="mt-10"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.3 }}
-        >
+        <motion.section className="mt-10" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}>
           <button
             onClick={() => setShowSummary(v => !v)}
             className="mb-4 flex items-center gap-2 text-sm font-semibold text-blue-400 transition hover:text-blue-300"
@@ -545,17 +429,15 @@ export default function Teacher() {
           <AnimatePresence>
             {showSummary && (
               <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                transition={{ duration: 0.35 }}
+                initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.35 }}
                 className="mb-10 overflow-hidden"
               >
                 <div className="overflow-x-auto rounded-xl border border-white/[0.07] bg-white/[0.02]">
-                  <table className="w-full text-sm text-left">
+                  <table className="w-full text-left text-sm">
                     <thead className="border-b border-white/[0.06] text-xs uppercase tracking-wider text-white/30">
                       <tr>
-                        {['Student ID', 'Name', 'Group', 'Sessions', 'Present', 'Late', 'Flagged', 'Absent', '%'].map(h => (
+                        {['Student ID','Name','Group','Sessions','Present','Late','Flagged','Absent','%'].map(h => (
                           <th key={h} className="px-4 py-3 font-semibold">{h}</th>
                         ))}
                       </tr>
@@ -585,22 +467,19 @@ export default function Teacher() {
         {/* Session history */}
         <motion.section
           className="mt-4"
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.35, duration: 0.5 }}
+          initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35, duration: 0.5 }}
         >
           <h2 className="mb-4 text-xl font-bold tracking-tight text-white">Session History</h2>
-
           {sessionsHistory.length === 0 ? (
             <div className="rounded-xl border border-dashed border-white/[0.08] p-14 text-center text-sm text-white/25">
               No sessions yet. Start one above.
             </div>
           ) : (
             <div className="overflow-x-auto rounded-xl border border-white/[0.07] bg-white/[0.02]">
-              <table className="w-full text-sm text-left">
+              <table className="w-full text-left text-sm">
                 <thead className="border-b border-white/[0.06] text-xs uppercase tracking-wider text-white/30">
                   <tr>
-                    {['Date', 'Group', 'Status', 'Present', 'Late', 'Flagged', 'Absent', 'Actions'].map(h => (
+                    {['Date','Group','Status','Present','Late','Flagged','Absent','Actions'].map(h => (
                       <th key={h} className="px-5 py-3.5 font-semibold">{h}</th>
                     ))}
                   </tr>
@@ -608,23 +487,16 @@ export default function Teacher() {
                 <tbody className="divide-y divide-white/[0.04]">
                   {sessionsHistory.map((s, idx) => {
                     const sm = summarizeDbSession(s, allSubsMap.get(s.id) ?? [])
-                    const isExpiredOrInactive = !s.is_active || new Date(s.ends_at).getTime() < Date.now()
-                    const status: 'Active' | 'Closed' | 'Expired' = s.is_active && !isExpiredOrInactive
-                      ? 'Active'
-                      : !s.is_active
-                      ? 'Closed'
-                      : 'Expired'
+                    const isLive = s.is_active && new Date(s.ends_at).getTime() > Date.now()
+                    const status: 'Active' | 'Closed' | 'Expired' = isLive ? 'Active' : !s.is_active ? 'Closed' : 'Expired'
                     return (
                       <motion.tr
                         key={s.id}
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
+                        initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: idx * 0.03 }}
                         className="transition hover:bg-white/[0.03]"
                       >
-                        <td className="px-5 py-3.5 font-mono text-xs text-white/30">
-                          {new Date(s.created_at).toLocaleString()}
-                        </td>
+                        <td className="px-5 py-3.5 font-mono text-xs text-white/30">{new Date(s.created_at).toLocaleString()}</td>
                         <td className="px-5 py-3.5 font-semibold text-white/70">{s.group_name}</td>
                         <td className="px-5 py-3.5"><StatusBadge status={status} /></td>
                         <td className="px-5 py-3.5 font-semibold text-emerald-400">{sm.present}</td>
@@ -633,26 +505,11 @@ export default function Teacher() {
                         <td className="px-5 py-3.5 text-white/30">{sm.absent}</td>
                         <td className="px-5 py-3.5">
                           <div className="flex items-center gap-3">
-                            <button
-                              onClick={() => handleExportCsv(s)}
-                              className="text-xs font-bold text-blue-400 transition hover:text-blue-300 hover:underline"
-                            >
-                              CSV
-                            </button>
+                            <button onClick={() => handleExportCsv(s)} className="text-xs font-bold text-blue-400 hover:underline">CSV</button>
                             {s.is_active && (
-                              <button
-                                onClick={() => handleCloseSession(s.id)}
-                                className="text-xs text-amber-400 transition hover:text-amber-300 hover:underline"
-                              >
-                                Close
-                              </button>
+                              <button onClick={() => handleCloseSession(s.id)} className="text-xs text-amber-400 hover:underline">Close</button>
                             )}
-                            <button
-                              onClick={() => handleDeleteSession(s.id)}
-                              className="text-xs text-red-400/70 transition hover:text-red-400 hover:underline"
-                            >
-                              Delete
-                            </button>
+                            <button onClick={() => handleDeleteSession(s.id)} className="text-xs text-red-400/70 hover:text-red-400 hover:underline">Delete</button>
                           </div>
                         </td>
                       </motion.tr>
