@@ -267,6 +267,7 @@ export default function Teacher() {
   const [allSubsMap, setAllSubsMap] = useState<Map<string, DbSubmission[]>>(new Map())
   const [actionLoading, setActionLoading] = useState(false)
   const [showSummary, setShowSummary] = useState(false)
+  const [activeTab, setActiveTab] = useState<'sessions' | 'data'>('sessions')
 
   useEffect(() => { setMounted(true) }, [])
   useEffect(() => { if (teacher === false) navigate('/auth') }, [teacher, navigate])
@@ -374,6 +375,29 @@ export default function Teacher() {
           <p className="mt-2 text-sm text-white/35">Start PIN-gated sessions; students see them live on their phones.</p>
         </motion.section>
 
+        {/* ── Tab Bar ── */}
+        <div className="mb-8 flex gap-1 rounded-xl border border-white/[0.07] bg-white/[0.03] p-1 backdrop-blur-sm w-fit">
+          {([
+            { id: 'sessions', label: '🗂 Sessions',        color: 'text-teal-300' },
+            { id: 'data',     label: '📊 Data Scientist',  color: 'text-purple-300' },
+          ] as const).map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`rounded-lg px-5 py-2 text-xs font-bold uppercase tracking-wider transition-all duration-200 ${
+                activeTab === tab.id
+                  ? `bg-white/[0.08] ${tab.color} shadow-sm`
+                  : 'text-white/30 hover:text-white/60'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* ══════════════════ SESSIONS TAB ══════════════════ */}
+        {activeTab === 'sessions' && (
+        <>
         {/* Top grid */}
         <div className="grid gap-6 lg:grid-cols-3">
           {/* Session control */}
@@ -520,6 +544,166 @@ export default function Teacher() {
             </div>
           )}
         </motion.section>
+        </> /* end sessions tab */
+        )}
+
+        {/* ══════════════════ DATA SCIENTIST TAB ══════════════════ */}
+        {activeTab === 'data' && (() => {
+          const studentSummariesForData = computeStudentSummaries(sessionsHistory, allSubsMap)
+          const totalSessions = sessionsHistory.length
+          const totalPresent  = studentSummariesForData.reduce((s, r) => s + r.present, 0)
+          const totalLate     = studentSummariesForData.reduce((s, r) => s + r.late, 0)
+          const totalFlagged  = studentSummariesForData.reduce((s, r) => s + r.flagged, 0)
+          const totalAbsent   = studentSummariesForData.reduce((s, r) => s + r.absent, 0)
+          const avgRate       = totalSessions > 0
+            ? (studentSummariesForData.reduce((s, r) => s + parseFloat(r.percentage), 0) / Math.max(studentSummariesForData.length, 1)).toFixed(1)
+            : '—'
+
+          const groupStats = ['G1','G2','G3','G4'].map(g => {
+            const members = studentSummariesForData.filter(s => s.group === g)
+            const avg = members.length
+              ? (members.reduce((s, r) => s + parseFloat(r.percentage), 0) / members.length).toFixed(1)
+              : '—'
+            return { group: g, count: members.length, avg }
+          })
+
+          const atRisk = studentSummariesForData.filter(s => parseFloat(s.percentage) < 75).length
+          const excellent = studentSummariesForData.filter(s => parseFloat(s.percentage) >= 90).length
+
+          return (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4 }}
+              className="space-y-6"
+            >
+              {/* Summary stat cards */}
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+                {[
+                  { label: 'Total Sessions', val: totalSessions,  color: 'text-teal-300',    icon: '🗂' },
+                  { label: 'Total Present',  val: totalPresent,   color: 'text-emerald-400', icon: '✅' },
+                  { label: 'Total Late',     val: totalLate,      color: 'text-amber-300',   icon: '⏰' },
+                  { label: 'Total Flagged',  val: totalFlagged,   color: 'text-orange-400',  icon: '🚩' },
+                  { label: 'At-Risk (<75%)', val: atRisk,         color: 'text-red-400',     icon: '⚠️' },
+                  { label: 'Excellent (≥90%)',val: excellent,     color: 'text-purple-300',  icon: '🏆' },
+                ].map(c => (
+                  <div key={c.label} className="rounded-xl border border-white/[0.07] bg-white/[0.03] p-4 backdrop-blur-sm">
+                    <div className="mb-1 flex items-center justify-between">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-white/30">{c.label}</span>
+                      <span>{c.icon}</span>
+                    </div>
+                    <div className={`text-2xl font-extrabold tabular-nums ${c.color}`}>{c.val}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Per-group heatmap */}
+              <div className="rounded-xl border border-white/[0.07] bg-white/[0.03] p-6 backdrop-blur-sm">
+                <h3 className="mb-4 text-sm font-bold uppercase tracking-wider text-white/60">Avg Attendance Rate by Group</h3>
+                <div className="flex gap-4 flex-wrap">
+                  {groupStats.map(g => {
+                    const pct = parseFloat(g.avg) || 0
+                    const barColor = pct >= 80 ? '#22c55e' : pct >= 60 ? '#f59e0b' : '#ef4444'
+                    return (
+                      <div key={g.group} className="flex-1 min-w-[80px] rounded-xl border border-white/[0.07] p-4" style={{ borderColor: barColor + '44' }}>
+                        <div className="mb-2 text-xs font-bold text-white/50 uppercase">{g.group}</div>
+                        <div className="mb-3 h-2 rounded-full bg-white/[0.06] overflow-hidden">
+                          <div
+                            className="h-full rounded-full"
+                            style={{ width: `${Math.min(pct, 100)}%`, background: barColor, boxShadow: `0 0 8px ${barColor}88` }}
+                          />
+                        </div>
+                        <div className="font-mono text-xl font-bold" style={{ color: barColor }}>{g.avg}%</div>
+                        <div className="mt-0.5 text-[10px] text-white/25">{g.count} students</div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Late & Flagged distribution */}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="rounded-xl border border-white/[0.07] bg-white/[0.03] p-6 backdrop-blur-sm">
+                  <h3 className="mb-4 text-sm font-bold uppercase tracking-wider text-white/60">Late / Flagged Leaders</h3>
+                  {studentSummariesForData.length === 0 ? (
+                    <p className="text-xs text-white/25 italic">No session data yet.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {[...studentSummariesForData]
+                        .sort((a, b) => (b.late + b.flagged) - (a.late + a.flagged))
+                        .slice(0, 8)
+                        .map(s => (
+                          <div key={s.id} className="flex items-center gap-3">
+                            <span className="w-8 text-[10px] text-white/30 font-mono">{s.group}</span>
+                            <span className="flex-1 text-xs text-white/70 truncate" dir="rtl">{s.name}</span>
+                            <span className="font-mono text-xs text-amber-300">{s.late}L</span>
+                            <span className="font-mono text-xs text-orange-400">{s.flagged}F</span>
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-xl border border-white/[0.07] bg-white/[0.03] p-6 backdrop-blur-sm">
+                  <h3 className="mb-4 text-sm font-bold uppercase tracking-wider text-white/60">At-Risk Students (&lt;75%)</h3>
+                  {atRisk === 0 ? (
+                    <p className="text-xs text-white/25 italic">No at-risk students. 🎉</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {[...studentSummariesForData]
+                        .filter(s => parseFloat(s.percentage) < 75)
+                        .sort((a, b) => parseFloat(a.percentage) - parseFloat(b.percentage))
+                        .slice(0, 8)
+                        .map(s => (
+                          <div key={s.id} className="flex items-center gap-3">
+                            <span className="w-8 text-[10px] text-white/30 font-mono">{s.group}</span>
+                            <span className="flex-1 text-xs text-white/70 truncate" dir="rtl">{s.name}</span>
+                            <span className="font-mono text-xs text-red-400 font-bold">{s.percentage}%</span>
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Full table */}
+              <div className="rounded-xl border border-white/[0.07] bg-white/[0.03] overflow-x-auto">
+                <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.06]">
+                  <h3 className="text-sm font-bold text-white/70">Full Student Analytics</h3>
+                  <span className="text-xs text-white/25">{studentSummariesForData.length} students · Avg {avgRate}%</span>
+                </div>
+                <table className="w-full text-left text-sm">
+                  <thead className="border-b border-white/[0.06] text-[10px] uppercase tracking-wider text-white/25">
+                    <tr>
+                      {['ID','Name','Group','Sessions','Present','Late','Flagged','Absent','Rate'].map(h => (
+                        <th key={h} className="px-4 py-3 font-semibold">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/[0.03]">
+                    {studentSummariesForData.map(s => {
+                      const pct = parseFloat(s.percentage)
+                      const rateColor = pct >= 80 ? 'text-emerald-400' : pct >= 60 ? 'text-amber-300' : 'text-red-400'
+                      return (
+                        <tr key={s.id} className="transition hover:bg-white/[0.03]">
+                          <td className="px-4 py-2.5 font-mono text-xs text-white/25">{s.id}</td>
+                          <td className="px-4 py-2.5 text-white/75 font-arabic" dir="rtl">{s.name}</td>
+                          <td className="px-4 py-2.5 text-white/45">{s.group}</td>
+                          <td className="px-4 py-2.5 text-white/45">{s.sessionsTotal}</td>
+                          <td className="px-4 py-2.5 font-semibold text-emerald-400">{s.present}</td>
+                          <td className="px-4 py-2.5 font-semibold text-amber-300">{s.late}</td>
+                          <td className="px-4 py-2.5 font-semibold text-orange-400">{s.flagged}</td>
+                          <td className="px-4 py-2.5 text-white/25">{s.absent}</td>
+                          <td className={`px-4 py-2.5 font-bold ${rateColor}`}>{s.percentage}%</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </motion.div>
+          )
+        })()}
       </main>
     </div>
   )
