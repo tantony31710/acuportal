@@ -3,22 +3,256 @@
 @tailwind utilities;
 
 @layer base {
-  * { border-color: oklch(0.3 0.03 200); }
+  * {
+    border-color: oklch(0.3 0.03 200);
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
   body {
-    background-color: oklch(0.16 0.025 200);
+    background-color: oklch(0.13 0.025 200);
     color: oklch(0.97 0.01 180);
     font-family: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
     background-image:
-      radial-gradient(circle at 15% 10%, oklch(0.74 0.14 175 / 0.08), transparent 45%),
-      radial-gradient(circle at 85% 90%, oklch(0.78 0.18 75 / 0.06), transparent 45%);
+      radial-gradient(ellipse at 15% 10%, oklch(0.74 0.14 175 / 0.07), transparent 50%),
+      radial-gradient(ellipse at 85% 90%, oklch(0.65 0.2 240 / 0.06), transparent 50%),
+      radial-gradient(ellipse at 50% 50%, oklch(0.2 0.04 200 / 0.5), transparent 80%);
     min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
+
+  ::selection {
+    background: oklch(0.74 0.14 175 / 0.3);
+    color: oklch(0.97 0.01 180);
+  }
+
+  :focus-visible {
+    outline: 2px solid oklch(0.74 0.14 175 / 0.8);
+    outline-offset: 2px;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: oklch(0.16 0.025 200); }
+  ::-webkit-scrollbar-thumb { background: oklch(0.35 0.04 200); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: oklch(0.74 0.14 175 / 0.6); }
+
   .font-mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
   .font-arabic { font-family: 'Noto Naskh Arabic', 'Amiri', serif; }
+
   .pin-digit {
     font-family: 'JetBrains Mono', monospace;
     font-weight: 700;
     letter-spacing: 0.4em;
     font-variant-numeric: tabular-nums;
   }
+}
+
+@layer components {
+  /* ── Glassmorphism cards ───────────────────────────────────── */
+  .card-glass {
+    @apply rounded-2xl border border-white/[0.07] bg-white/[0.04] shadow-glass;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .card-glass::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(255,255,255,0.05) 0%, transparent 60%);
+    pointer-events: none;
+    border-radius: inherit;
+  }
+
+  .card-glass-dark {
+    @apply rounded-2xl border border-white/[0.05] shadow-glass;
+    background: rgba(10, 15, 25, 0.6);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+  }
+
+  /* ── Glow buttons ──────────────────────────────────────────── */
+  .btn-glow-teal {
+    @apply relative overflow-hidden rounded-xl px-6 py-3 font-semibold text-slate-950 transition-all duration-300;
+    background: linear-gradient(135deg, oklch(0.74 0.14 175), oklch(0.65 0.18 165));
+    box-shadow: 0 0 0 0 oklch(0.74 0.14 175 / 0.4);
+  }
+  .btn-glow-teal:hover {
+    box-shadow: 0 0 30px 6px oklch(0.74 0.14 175 / 0.35), 0 4px 20px rgba(0,0,0,0.4);
+    transform: translateY(-1px);
+  }
+  .btn-glow-teal:active { transform: translateY(0px); }
+  .btn-glow-teal::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(255,255,255,0.15) 0%, transparent 50%);
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .btn-glow-teal:hover::before { opacity: 1; }
+
+  .btn-glow-blue {
+    @apply relative overflow-hidden rounded-xl px-6 py-3 font-semibold text-white transition-all duration-300;
+    background: linear-gradient(135deg, oklch(0.55 0.22 240), oklch(0.48 0.2 250));
+    box-shadow: 0 0 0 0 oklch(0.55 0.22 240 / 0.4);
+  }
+  .btn-glow-blue:hover {
+    box-shadow: 0 0 30px 6px oklch(0.55 0.22 240 / 0.35), 0 4px 20px rgba(0,0,0,0.4);
+    transform: translateY(-1px);
+  }
+
+  /* ── Input glow ──────────────────────────────────────────────*/
+  .input-glow {
+    @apply w-full rounded-xl border bg-white/[0.04] px-4 py-3 text-white placeholder-white/20 outline-none transition-all duration-300;
+    border-color: rgba(255,255,255,0.1);
+  }
+  .input-glow:focus {
+    border-color: oklch(0.74 0.14 175 / 0.7);
+    box-shadow: 0 0 0 3px oklch(0.74 0.14 175 / 0.15), inset 0 1px 0 rgba(255,255,255,0.05);
+    background: rgba(255,255,255,0.06);
+  }
+
+  /* ── PIN box ───────────────────────────────────────────────── */
+  .pin-box {
+    @apply w-12 h-14 rounded-xl border text-center text-xl font-mono font-bold text-white outline-none transition-all duration-200;
+    background: rgba(255,255,255,0.04);
+    border-color: rgba(255,255,255,0.1);
+  }
+  .pin-box:focus {
+    border-color: oklch(0.74 0.14 175);
+    box-shadow: 0 0 0 3px oklch(0.74 0.14 175 / 0.2), 0 0 16px oklch(0.74 0.14 175 / 0.3);
+    background: rgba(255,255,255,0.07);
+    transform: scale(1.08);
+  }
+  .pin-box.filled {
+    border-color: oklch(0.74 0.14 175 / 0.6);
+    background: oklch(0.74 0.14 175 / 0.08);
+  }
+
+  /* ── Nav link ──────────────────────────────────────────────── */
+  .nav-link {
+    @apply relative rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200;
+    color: oklch(0.7 0.02 190);
+  }
+  .nav-link:hover {
+    color: oklch(0.97 0.01 180);
+    background: rgba(255,255,255,0.06);
+  }
+  .nav-link.active {
+    color: oklch(0.97 0.01 180);
+    background: rgba(255,255,255,0.08);
+  }
+  .nav-link.active::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 60%;
+    height: 2px;
+    background: oklch(0.74 0.14 175);
+    border-radius: 1px;
+    box-shadow: 0 0 8px oklch(0.74 0.14 175 / 0.8);
+  }
+
+  /* ── Stat card ─────────────────────────────────────────────── */
+  .stat-card {
+    @apply card-glass p-5 transition-all duration-300;
+  }
+  .stat-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(255,255,255,0.12);
+  }
+
+  /* ── Live badge ────────────────────────────────────────────── */
+  .live-badge {
+    @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wider;
+    background: oklch(0.72 0.18 150 / 0.15);
+    color: oklch(0.72 0.18 150);
+    border: 1px solid oklch(0.72 0.18 150 / 0.3);
+  }
+  .live-badge .dot {
+    @apply h-1.5 w-1.5 rounded-full;
+    background: oklch(0.72 0.18 150);
+    animation: ping-slow 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+  }
+
+  /* ── Shimmer skeleton ──────────────────────────────────────── */
+  .shimmer-skeleton {
+    @apply rounded-lg;
+    background: linear-gradient(
+      90deg,
+      oklch(0.22 0.03 200) 25%,
+      oklch(0.28 0.04 200) 50%,
+      oklch(0.22 0.03 200) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+
+  /* ── Feature card 3D tilt ──────────────────────────────────── */
+  .feature-card {
+    @apply card-glass p-6 cursor-pointer transition-all duration-300;
+    transform-style: preserve-3d;
+  }
+  .feature-card:hover {
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.1);
+  }
+
+  /* ── Orb decoration ────────────────────────────────────────── */
+  .orb {
+    @apply absolute rounded-full blur-3xl pointer-events-none;
+    mix-blend-mode: screen;
+  }
+}
+
+@layer utilities {
+  .animation-delay-100 { animation-delay: 0.1s; }
+  .animation-delay-200 { animation-delay: 0.2s; }
+  .animation-delay-300 { animation-delay: 0.3s; }
+  .animation-delay-400 { animation-delay: 0.4s; }
+  .animation-delay-500 { animation-delay: 0.5s; }
+  .animation-delay-600 { animation-delay: 0.6s; }
+  .animation-delay-700 { animation-delay: 0.7s; }
+  .animation-delay-1000 { animation-delay: 1s; }
+  .animation-delay-1500 { animation-delay: 1.5s; }
+  .animation-delay-2000 { animation-delay: 2s; }
+  .animation-delay-3000 { animation-delay: 3s; }
+
+  .animation-fill-both { animation-fill-mode: both; }
+
+  .gradient-text-teal {
+    background: linear-gradient(135deg, oklch(0.74 0.14 175), oklch(0.78 0.18 155));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .gradient-text-blue {
+    background: linear-gradient(135deg, oklch(0.7 0.2 230), oklch(0.74 0.14 175));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .border-glow-teal {
+    border-color: oklch(0.74 0.14 175 / 0.5);
+    box-shadow: 0 0 12px oklch(0.74 0.14 175 / 0.2);
+  }
+
+  .border-glow-blue {
+    border-color: oklch(0.65 0.2 240 / 0.5);
+    box-shadow: 0 0 12px oklch(0.65 0.2 240 / 0.2);
+  }
+
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 }

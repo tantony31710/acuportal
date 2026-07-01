@@ -1,20 +1,33 @@
 import { createClient } from '@supabase/supabase-js'
 
-// Try reading with and without the VITE_ prefix to prevent Vercel connection drops
-const supabaseUrl = 
-  import.meta.env.VITE_SUPABASE_URL || 
-  (import.meta.env as any).SUPABASE_URL || 
-  'https://beefbianpgvjmzsdkwvd.supabase.co'
+// Credentials MUST come from environment variables — no hardcoded fallbacks.
+// Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your .env.local file.
+//
+// ⚠️  SECURITY: Only use the ANON (public) key here.
+//     The service_role key bypasses Row Level Security and must NEVER be used
+//     in frontend code. If you see "service_role" in your JWT, rotate the key
+//     in Supabase Dashboard → Project Settings → API.
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string
 
-const supabaseAnonKey = 
-  import.meta.env.VITE_SUPABASE_ANON_KEY || 
-  (import.meta.env as any).SUPABASE_ANON_KEY || 
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJlZWZiaWFucGd2am16c2Rrd3ZkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1Nzk0NjcsImV4cCI6MjA5NjE1NTQ2N30.E_mxSnW-CaUfz9a7KkCjimN1LLCEuLWlHH-34956_YU'
+// Support old VITE_SUPABASE_PUBLISHABLE_KEY name for backward compatibility
+// Prefer VITE_SUPABASE_ANON_KEY going forward
+const supabaseAnonKey = (
+  import.meta.env.VITE_SUPABASE_ANON_KEY ||
+  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
+) as string
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error(
+    '[supabase] Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY. ' +
+    'Copy .env.example to .env.local and fill in the values from your Supabase dashboard.'
+  )
+}
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    storage: window.sessionStorage, // Wipes token context automatically when browser tab finishes or closes
+    // sessionStorage: token is wiped when the tab closes (prevents session fixation)
+    storage: typeof window !== 'undefined' ? window.sessionStorage : undefined,
     autoRefreshToken: true,
-    persistSession: true
-  }
+    persistSession: true,
+  },
 })
