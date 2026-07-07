@@ -4,6 +4,7 @@ import DOMPurify from 'dompurify'
 import { SiteNav } from '../components/SiteNav'
 import { AnimatedBackground } from '../components/AnimatedBackground'
 import { getActiveSession, submitAttendance, getFingerprint, type Session } from '../lib/attendance'
+import { detectAttendanceAnomaly } from '../lib/anomaly-detector'
 import { checkLocation } from '../lib/location'
 import { supabase } from '../lib/supabase'
 
@@ -119,12 +120,19 @@ export default function CheckIn() {
     const locResult = await checkLocation()
     let locationFlag: string | null = null
 
+    // Check for anomalies
+    const anomaly = detectAttendanceAnomaly(cleanId, session.id)
+    if (anomaly.isAnomaly) {
+      locationFlag = anomaly.reason ?? 'ANOMALY_DETECTED'
+      setMsg({ type: 'warning', text: `⚠️ System flag: ${anomaly.reason}` })
+    }
+
     if (!locResult.ok) {
-      locationFlag = locResult.reason
+      locationFlag = locationFlag ? `${locationFlag}|${locResult.reason}` : locResult.reason
       setLocationStatus(locResult.reason.includes('denied') ? 'denied' : 'flagged')
       setLocationDetail(locResult.reason)
       setMsg({ type: 'warning', text: `⚠️ ${locResult.reason} — recorded as flagged` })
-    } else {
+    } else if (!locationFlag) { // Only set status to ok if not already flagged by anomaly
       setLocationStatus('ok')
       setLocationDetail(`${locResult.distance}m from campus`)
     }

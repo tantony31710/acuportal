@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { ROSTER, type Group } from './roster'
+import { logEvent } from './telemetry'
 export type { Group }
 
 export type Session = {
@@ -75,6 +76,7 @@ export async function deleteSession(id: string): Promise<void> {
 }
 
 export async function submitAttendance(input: { studentId: string; pin: string; fingerprint: string; locationFlag?: string }) {
+  logEvent('ATTENDANCE_SUBMISSION_ATTEMPT', { studentId: input.studentId })
   const active = await getActiveSession()
   if (!active) return { ok: false, reason: 'No active session' }
   if (Date.now() > active.endsAt) return { ok: false, reason: 'Session expired' }
