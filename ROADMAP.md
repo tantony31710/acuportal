@@ -9,7 +9,7 @@ This document tracks progression across all 9 domains to ensure professional, ho
 | **Data Analyst** | Excel/Reporting → SQL/Databases → Programming (Python/R) → Data Cleaning → Data Visualization (Tableau/Power BI) → Statistics/Hypothesis Testing → Advanced (ML/Big Data). |
 | **Data Engineer** | Python/SQL/Git Foundations → Data Modeling → Database Management (SQL/NoSQL) → ETL Pipelines (Airflow/dbt) → Cloud Infrastructure (AWS/GCP/Azure) → Big Data (Spark/Hadoop) → Data Quality & Governance. |
 | **Python for Data Analysis** | Python Basics (Data Structures/Functions) → Data Handling (NumPy/Pandas) → Cleaning (Missing values/Outliers) → Visualization (Matplotlib/Seaborn) → EDA → Advanced (ML libraries/Big Data tools). |
-| **AI & Data Scientist** | Math (Linear Algebra/Stats/Calculus) → Python/SQL → EDA → Machine Learning (Supervised/Unsupervised) → Deep Learning (NNs/CNNs/Transformers) → MLOps → AI Engineering (Prompting/RAG). |
+| **AI & Data Scientist** | Math (Linear Algebra/Stats/Calculus) → Python/SQL → EDA → Machine Learning (Supervised/Unsupervised) → Deep Learning (Transformers/CNNs) → MLOps → AI Engineering (Prompting/RAG). |
 | **AI Engineer** | Prereqs (Frontend/Backend/LLM Inference) → LLM Foundations → Prompt Engineering → Vector Databases → RAG Pipelines → AI Agents → Multimodal Apps → Evaluation & Observability. |
 
 ## 2. Development & Infrastructure Tracks
@@ -32,6 +32,11 @@ This document tracks progression across all 9 domains to ensure professional, ho
 2. **Checkpoint Learning**: Treat each module as a checkpoint; build a small, tangible project for each.
 3. **Contextual Overlap**: Many tracks share foundations (e.g., Python/SQL). Use this efficiency.
 4. **Master Architecture Persona**: Always evaluate new features using the `Master Architecture Prompt` defined in `GEMINI.md`.
+
+## System-Wide Overhaul Summary (COMPLETED)
+- **Batch A (Infrastructure/Security):** RLS hardened, Auth refactored, CI/CD automated.
+- **Batch B (Data/AI):** Schema optimized (pgvector), RAG foundation established.
+- **Batch C (UX/Performance):** UI components consolidated, Zustand integration complete, performance optimized via memoization.
 
 ---
 *Roadmap Sources:* 

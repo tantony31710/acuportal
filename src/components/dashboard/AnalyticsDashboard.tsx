@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { getDashboardStats, getSessionAnomalies } from '../../lib/analytics';
 import { Card } from '../ui/card';
 
-export function AnalyticsDashboard({ sessionId }: { sessionId: string }) {
+export const AnalyticsDashboard = React.memo(function AnalyticsDashboard({ sessionId }: { sessionId: string }) {
   const [stats, setStats] = useState<any>(null);
   const [anomalies, setAnomalies] = useState<any[]>([]);
 
@@ -16,6 +16,10 @@ export function AnalyticsDashboard({ sessionId }: { sessionId: string }) {
     }
     loadData();
   }, [sessionId]);
+
+  const sortedAnomalies = useMemo(() => {
+    return [...anomalies].sort((a, b) => b.z_score - a.z_score);
+  }, [anomalies]);
 
   if (!stats) return <div>Loading Analytics...</div>;
 
@@ -40,11 +44,11 @@ export function AnalyticsDashboard({ sessionId }: { sessionId: string }) {
         </Card>
       </div>
 
-      {anomalies.length > 0 && (
+      {sortedAnomalies.length > 0 && (
         <Card className="p-6 bg-slate-900 border-orange-900/50">
           <h3 className="text-lg font-semibold text-orange-400 mb-4">Anomaly Alerts</h3>
           <ul className="space-y-2">
-            {anomalies.map((a: any) => (
+            {sortedAnomalies.map((a: any) => (
               <li key={a.student_id} className="text-sm text-slate-300">
                 Student {a.student_id} shows suspicious check-in pattern (Z-score: {a.z_score.toFixed(2)})
               </li>
@@ -54,4 +58,4 @@ export function AnalyticsDashboard({ sessionId }: { sessionId: string }) {
       )}
     </motion.div>
   );
-}
+});

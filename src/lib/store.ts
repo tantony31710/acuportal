@@ -1,5 +1,16 @@
 import { create } from 'zustand';
 
+interface AppStore {
+  // Restore basic app state interface
+  sidebarOpen: boolean;
+  toggleSidebar: () => void;
+}
+
+export const useAppStore = create<AppStore>((set) => ({
+  sidebarOpen: true,
+  toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
+}));
+
 interface AttendanceStore {
   attendanceLogs: any[];
   setAttendanceLogs: (logs: any[]) => void;
