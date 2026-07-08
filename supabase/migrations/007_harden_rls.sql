@@ -30,6 +30,11 @@ CREATE POLICY "teacher_manage_sessions" ON attendance_sessions
   WITH CHECK (EXISTS (SELECT 1 FROM user_roles WHERE user_id = auth.uid() AND role = 'teacher'));
 
 -- user_roles: Restricted access
-CREATE POLICY "teacher_read_user_roles" ON user_roles
+-- Authenticated users can read their own role, teachers can read all
+CREATE POLICY "authenticated_read_own_role" ON user_roles
+  FOR SELECT TO authenticated
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "teacher_read_all_user_roles" ON user_roles
   FOR SELECT TO authenticated
   USING (EXISTS (SELECT 1 FROM user_roles WHERE user_id = auth.uid() AND role = 'teacher'));
