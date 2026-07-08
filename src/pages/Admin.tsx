@@ -3,8 +3,13 @@ import { Link } from 'react-router-dom'
 import { SiteNav } from '@/components/SiteNav'
 import { useIsTeacher } from '@/lib/auth'
 import { validateRoster, saveRosterOverride, clearRosterOverride, hasRosterOverride, type RosterValidationResult } from '@/lib/roster'
+import { MegaSprintDashboard } from '@/components/dashboard/MegaSprintDashboard'
 
 type Mapped = { id: string; name: string; group: string; advisor: string }
+// ... (rest of the file remains the same)
+// ... I need to find where to insert MegaSprintDashboard. 
+// I will place it after </main> or within MainPanel? Wait, this file is long.
+// I will just add MegaSprintDashboard to the bottom of the return statement in AdminPanel.
 
 function splitCsvLine(line: string): string[] {
   const out: string[] = []; let cur = ''; let inQ = false
@@ -152,6 +157,9 @@ function AdminPanel() {
             </div>
           </div>
         )}
+        <div className="mt-12">
+          <MegaSprintDashboard />
+        </div>
       </main>
     </div>
   )

@@ -10,6 +10,7 @@ import { Sessions } from './pages/Sessions'
 import { Flags } from './pages/Flags'
 import { Roster } from './pages/Roster'
 import { Admin } from './pages/Admin'
+import { GlobalLayout } from './components/layout/GlobalLayout'
 import './styles.css'
 
 // ── Error boundary — catches render crashes and shows a message instead of blank ──
@@ -111,24 +112,26 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ErrorBoundary>
       <BrowserRouter>
-        <Routes>
-          <Route path="/"         element={<Home />} />
-          <Route path="/auth"     element={<Auth />} />
-          <Route path="/check-in" element={<CheckIn />} />
-          <Route path="/sessions" element={<Sessions />} />
-          <Route path="/flags"    element={<Flags />} />
-          <Route path="/roster"   element={<Roster />} />
-          <Route path="/admin"    element={<Admin />} />
-          <Route
-            path="/teacher"
-            element={
-              <TeacherRouteGuard>
-                <Teacher />
-              </TeacherRouteGuard>
-            }
-          />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+        <GlobalLayout>
+          <Routes>
+            <Route path="/"         element={<Home />} />
+            <Route path="/auth"     element={<Auth />} />
+            <Route path="/check-in" element={<CheckIn />} />
+            <Route path="/sessions" element={<Sessions />} />
+            <Route path="/flags"    element={<Flags />} />
+            <Route path="/roster"   element={<Roster />} />
+            <Route path="/admin"    element={<Admin />} />
+            <Route
+              path="/teacher"
+              element={
+                <TeacherRouteGuard>
+                  <Teacher />
+                </TeacherRouteGuard>
+              }
+            />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </GlobalLayout>
       </BrowserRouter>
     </ErrorBoundary>
   </React.StrictMode>
