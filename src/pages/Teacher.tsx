@@ -19,6 +19,7 @@ import {
   type DbSession,
   type DbSubmission,
 } from '../lib/attendance-api'
+import { AnalyticsDashboard } from '../components/dashboard/AnalyticsDashboard'
 
 // ── Animated number counter ───────────────────────────────────────────────────
 function AnimatedNumber({ value, className = '' }: { value: number; className?: string }) {
@@ -496,6 +497,19 @@ export default function Teacher() {
             )}
           </motion.aside>
         </div>
+
+        {/* Analytics Section */}
+        {sessionsHistory.length > 0 && (
+          <motion.section 
+            className="mt-10"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.4 }}
+          >
+            <h2 className="mb-4 text-xl font-bold tracking-tight text-white">Analytics</h2>
+            <AnalyticsDashboard sessionId={sessionsHistory[0].id} />
+          </motion.section>
+        )}
 
         {/* Semester summary */}
         <motion.section
