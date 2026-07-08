@@ -9,6 +9,16 @@ serve(async (req) => {
   
   const { studentId, pin, fingerprint, lat, long } = await req.json()
   
+  // Robust Input Validation
+  if (!studentId || !pin || !fingerprint || lat === undefined || long === undefined) {
+    return new Response(JSON.stringify({ ok: false, reason: 'Missing required fields' }), { status: 400 })
+  }
+  
+  // Type validation
+  if (typeof studentId !== 'string' || typeof pin !== 'string' || typeof fingerprint !== 'string') {
+    return new Response(JSON.stringify({ ok: false, reason: 'Invalid data types' }), { status: 400 })
+  }
+  
   // 1. Verify Active Session & PIN
   const { data: session, error: sessErr } = await supabase
     .from('attendance_sessions')

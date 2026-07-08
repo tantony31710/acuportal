@@ -1,15 +1,13 @@
 import { create } from 'zustand';
 
-interface AppState {
-  isSidebarOpen: boolean;
-  toggleSidebar: () => void;
-  userRole: 'teacher' | 'student' | 'admin' | null;
-  setUserRole: (role: 'teacher' | 'student' | 'admin' | null) => void;
+interface AttendanceStore {
+  attendanceLogs: any[];
+  setAttendanceLogs: (logs: any[]) => void;
+  addLog: (log: any) => void;
 }
 
-export const useAppStore = create<AppState>((set) => ({
-  isSidebarOpen: true,
-  toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
-  userRole: null,
-  setUserRole: (role) => set({ userRole: role }),
+export const useAttendanceStore = create<AttendanceStore>((set) => ({
+  attendanceLogs: [],
+  setAttendanceLogs: (logs) => set({ attendanceLogs: logs }),
+  addLog: (log) => set((state) => ({ attendanceLogs: [...state.attendanceLogs, log] })),
 }));
