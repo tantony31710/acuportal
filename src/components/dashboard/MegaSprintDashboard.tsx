@@ -12,7 +12,7 @@ export function MegaSprintDashboard() {
   const [activeTab, setActiveTab] = useState<Tab>('Data');
 
   const tabs: { id: Tab; label: string }[] = [
-    { id: 'Data', label: 'Data (Science/Eng/Analysis)' },
+    { id: 'Data', label: 'Data' },
     { id: 'AI', label: 'AI' },
     { id: 'Security', label: 'Security' },
     { id: 'FullStack', label: 'Full-Stack' },
@@ -20,16 +20,18 @@ export function MegaSprintDashboard() {
   ];
 
   return (
-    <div className="p-6 bg-slate-950 min-h-screen text-white">
-      <h1 className="text-3xl font-bold mb-6">Acuportal Extreme: Mega-Sprint Dashboard</h1>
+    <div className="w-full bg-background rounded-xl border border-border p-6 shadow-xl">
+      <h2 className="text-2xl font-bold mb-6 text-white tracking-tight">Admin Control Center</h2>
       
-      <div className="flex space-x-2 mb-6 border-b border-slate-800 pb-2 overflow-x-auto">
+      <div className="flex space-x-1 mb-6 border-b border-border pb-2 overflow-x-auto">
         {tabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`px-4 py-2 font-semibold whitespace-nowrap ${
-              activeTab === tab.id ? 'text-teal-400 border-b-2 border-teal-400' : 'text-slate-500 hover:text-white'
+            className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 whitespace-nowrap ${
+              activeTab === tab.id 
+                ? 'bg-primary text-primary-foreground shadow-md' 
+                : 'text-muted-foreground hover:text-white hover:bg-border'
             }`}
           >
             {tab.label}
@@ -42,6 +44,7 @@ export function MegaSprintDashboard() {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.2 }}
+        className="min-h-[400px]"
       >
         {activeTab === 'Data' && <DataTrackDashboard />}
         {activeTab === 'AI' && <AITrackDashboard />}

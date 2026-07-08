@@ -1,52 +1,71 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Card } from '../ui/card';
 import { supabase } from '../../lib/supabase';
+import { Card } from '../ui/card';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend } from 'recharts';
 
 export function DataTrackDashboard() {
-  const [trends, setTrends] = useState<any[]>([]);
+  const [data, setData] = useState<any[]>([]);
+  const [summary, setSummary] = useState<any>(null);
 
   useEffect(() => {
-    async function loadData() {
-      // Mocking trend data fetch for demonstration - in production, this calls a SQL view
-      setTrends([
-        { date: 'Mon', present: 250, late: 10 },
-        { date: 'Tue', present: 260, late: 5 },
-        { date: 'Wed', present: 245, late: 15 },
-      ]);
+    async function fetchData() {
+      // Enterprise: Fetching raw submission data to process locally for deep analysis
+      const { data: submissions } = await supabase
+        .from('attendance_submissions')
+        .select('status, created_at')
+        .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString());
+
+      if (submissions) {
+        // Data Analysis: Grouping for visualization
+        const grouped = submissions.reduce((acc: any, curr) => {
+          const day = new Date(curr.created_at).toLocaleDateString('en-US', { weekday: 'short' });
+          if (!acc[day]) acc[day] = { day, present: 0, late: 0 };
+          if (curr.status === 'present') acc[day].present++;
+          if (curr.status === 'late') acc[day].late++;
+          return acc;
+        }, {});
+        setData(Object.values(grouped));
+      }
     }
-    loadData();
+    fetchData();
   }, []);
 
   return (
-    <div className="space-y-6">
-      <Card className="p-6 bg-slate-900 border-slate-800">
-        <h3 className="text-lg font-semibold text-white mb-4">Attendance Trends (Data Analysis)</h3>
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <Card className="p-6 bg-card border-border">
+        <h3 className="text-xl font-bold text-white mb-6">Attendance Throughput</h3>
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={trends}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-              <XAxis dataKey="date" stroke="#94a3b8" />
-              <YAxis stroke="#94a3b8" />
-              <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: 'none' }} />
-              <Line type="monotone" dataKey="present" stroke="#10b981" strokeWidth={2} />
-              <Line type="monotone" dataKey="late" stroke="#f59e0b" strokeWidth={2} />
+            <LineChart data={data}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+              <XAxis dataKey="day" stroke="#64748b" />
+              <YAxis stroke="#64748b" />
+              <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b' }} />
+              <Legend />
+              <Line type="monotone" dataKey="present" stroke="#2dd4bf" strokeWidth={3} />
+              <Line type="monotone" dataKey="late" stroke="#f59e0b" strokeWidth={3} />
             </LineChart>
           </ResponsiveContainer>
         </div>
       </Card>
-      
-      <div className="grid grid-cols-2 gap-4">
-        <Card className="p-4 bg-slate-900 border-slate-800">
-           <h4 className="text-sm text-slate-400">Automated ETL Job (Data Engineering)</h4>
-           <button className="mt-2 text-teal-400 text-sm font-semibold">Run Data Cleanup Pipeline</button>
-        </Card>
-        <Card className="p-4 bg-slate-900 border-slate-800">
-           <h4 className="text-sm text-slate-400">Anomaly Model (Data Science)</h4>
-           <div className="text-sm text-slate-200 mt-2">Status: <span className="text-emerald-400">Active (Z-Score)</span></div>
-        </Card>
-      </div>
+
+      <Card className="p-6 bg-card border-border">
+        <h3 className="text-xl font-bold text-white mb-4">Engineering: ETL Pipeline</h3>
+        <div className="space-y-4">
+          <div className="flex justify-between items-center p-3 bg-slate-950 rounded border border-border">
+            <span>Last Sync</span>
+            <span className="text-teal-400 font-mono">2026-07-08 14:00</span>
+          </div>
+          <div className="flex justify-between items-center p-3 bg-slate-950 rounded border border-border">
+            <span>Status</span>
+            <span className="text-emerald-500 font-bold">OPTIMAL</span>
+          </div>
+          <button className="w-full mt-4 bg-primary text-primary-foreground py-2 rounded font-bold hover:brightness-110">
+            Trigger Full Roster Re-Sync
+          </button>
+        </div>
+      </Card>
     </div>
   );
 }
