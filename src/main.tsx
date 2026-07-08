@@ -68,14 +68,18 @@ function TeacherRouteGuard({ children }: { children: React.ReactNode }) {
     async function checkTeacherAccess() {
       try {
         const { data: { user } } = await supabase.auth.getUser()
-        if (!user) { setIsTeacher(false); return }
+        if (!user) { console.log('No user found'); setIsTeacher(false); return }
+        
         const { data, error } = await supabase
           .from('user_roles')
           .select('role')
           .eq('user_id', user.id)
           .maybeSingle()
+        
+        console.log('Auth Check:', { userId: user.id, data, error });
         setIsTeacher(!error && data?.role === 'teacher')
-      } catch {
+      } catch (e) { 
+        console.error('Auth Guard Error:', e);
         setIsTeacher(false)
       } finally {
         setLoading(false)
